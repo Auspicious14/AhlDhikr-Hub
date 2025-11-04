@@ -49,7 +49,6 @@ export class VectorService {
       const normalizedEmbedding = normalizeVector(embedding);
       this.vectorRepository.addPoint(normalizedEmbedding, i);
       metadata.push({ id: i, text: doc.text, source: doc.source });
-      // Log progress
       if ((i + 1) % 100 === 0) {
         console.log(`Embedded ${i + 1}/${documents.length} documents...`);
       }
@@ -71,20 +70,25 @@ export class VectorService {
       metadata = loaded.metadata;
       isIndexLoaded = true;
     } else {
-      await this.buildIndex();
+      // In a production environment like Render, we should not build the index on startup.
+      // The index should be pre-built and included in the deployment.
+      console.error('CRITICAL: Index files not found. The application cannot start.');
+      console.error('Please run "npm run build-index" locally and commit the generated files.');
+      process.exit(1); // Exit the process with an error code
     }
   }
 
   async search(query: string, k: number = 5): Promise<Metadata[]> {
     if (!isIndexLoaded) {
-      await this.loadIndex();
+      // This should not happen in production if loadIndex is called on startup.
+      throw new Error('Index is not loaded. Please ensure the server is initialized correctly.');
     }
 
     const queryEmbedding = await this.geminiService.embedContent(query);
     const normalizedQueryEmbedding = normalizeVector(queryEmbedding);
     const neighborIds = this.vectorRepository.search(normalizedQueryEmbedding, k);
 
-    return neighborIds.map(id => metadata[id]).filter(Boolean); // Filter out potential undefined entries
+    return neighborIds.map(id => metadata[id]).filter(Boolean);
   }
 }
 
