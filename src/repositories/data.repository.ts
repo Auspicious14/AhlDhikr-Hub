@@ -2,10 +2,14 @@ import axios from 'axios';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { QuranVerse, Hadith } from '../models/types';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 const QURAN_FILE = path.join(DATA_DIR, 'quran.json');
 const HADITH_FILE = path.join(DATA_DIR, 'hadith.json');
+const HADITH_API_KEY = process.env.HADITH_API_KEY;
 
 export class DataRepository {
   private async fileExists(filePath: string): Promise<boolean> {
@@ -20,6 +24,7 @@ export class DataRepository {
   async getQuranVerses(): Promise<QuranVerse[]> {
     if (await this.fileExists(QURAN_FILE)) {
       const data = await fs.readFile(QURAN_FILE, 'utf-8');
+      console.log('Loaded Quran data from cache.');
       return JSON.parse(data);
     }
 
@@ -44,33 +49,50 @@ export class DataRepository {
     return verses;
   }
 
-  async getHadith(count: number = 1000): Promise<Hadith[]> {
+  async getHadith(): Promise<Hadith[]> {
     if (await this.fileExists(HADITH_FILE)) {
       const data = await fs.readFile(HADITH_FILE, 'utf-8');
+      console.log('Loaded Hadith data from cache.');
       return JSON.parse(data);
     }
 
-    console.log(`Fetching ${count} Hadith from API...`);
-    const hadiths: Hadith[] = [];
-    // Use Promise.all for concurrent fetching to speed up the process
-    const promises = Array.from({ length: count }, () =>
-      axios.get('https://random-hadith-generator.vercel.app/api/bukhari')
-        .then(response => ({
-          hadith_english: response.data.hadith_english,
-          by_book: response.data.by_book,
-        }))
-        .catch(error => {
-          console.error('Failed to fetch a hadith:', error.message);
-          return null; // Return null on failure to not break Promise.all
-        })
-    );
+    if (!HADITH_API_KEY) {
+      throw new Error('HADITH_API_KEY is not set in the environment variables.');
+    }
 
-    const results = await Promise.all(promises);
-    hadiths.push(...results.filter((h): h is Hadith => h !== null)); // Filter out any null results from failed requests
+    console.log('Fetching all Hadiths from Sahih Bukhari...');
+    const allHadiths: Hadith[] = [];
+    let page = 1;
+    let lastPage = 1;
+
+    do {
+      try {
+        const url = `https://hadithapi.com/public/api/hadiths?apiKey=${HADITH_API_KEY}&book=sahih-bukhari&page=${page}`;
+        const response = await axios.get(url);
+        const { data, current_page, last_page } = response.data.hadiths;
+
+        const hadiths = data.map((h: any) => ({
+          hadith_english: h.hadithEnglish,
+          by_book: h.book.bookName,
+        }));
+
+        allHadiths.push(...hadiths);
+
+        page = current_page;
+        lastPage = last_page;
+
+        console.log(`Fetched page ${page}/${lastPage} of Hadiths...`);
+
+      } catch (error) {
+        console.error(`Error fetching page ${page} of Hadiths:`, error);
+        // Stop if there's an error to avoid hammering the API
+        break;
+      }
+    } while (page++ <= lastPage);
 
     await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(HADITH_FILE, JSON.stringify(hadiths, null, 2));
-    console.log('Hadith data cached.');
-    return hadiths;
+    await fs.writeFile(HADITH_FILE, JSON.stringify(allHadiths, null, 2));
+    console.log(`Hadith data cached with ${allHadiths.length} hadiths.`);
+    return allHadiths;
   }
 }
