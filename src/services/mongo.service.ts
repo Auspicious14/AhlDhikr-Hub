@@ -1,4 +1,5 @@
 import { MongoClient, Db } from 'mongodb';
+import mongoose from 'mongoose';
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
@@ -23,6 +24,12 @@ export const connectToDatabase = async (): Promise<Db> => {
 
   if (!MONGODB_URI) {
     throw new Error('MONGODB_URI is not set. Cannot connect to the database.');
+  }
+
+  // Connect mongoose
+  if (mongoose.connection.readyState === 0) {
+    await mongoose.connect(MONGODB_URI);
+    console.log('Successfully connected to MongoDB with Mongoose.');
   }
 
   client = new MongoClient(MONGODB_URI);
@@ -50,6 +57,10 @@ export const getDb = (): Db => {
  * Closes the MongoDB connection.
  */
 export const closeDatabaseConnection = async () => {
+    if (mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect();
+    console.log('Mongoose connection closed.');
+  }
   if (client) {
     await client.close();
     console.log('MongoDB connection closed.');

@@ -5,6 +5,22 @@ import cors from 'cors'
 
 dotenv.config();
 
+// Check for required environment variables at startup
+const requiredEnvVars = ['GEMINI_API_KEY', 'HADITH_API_KEY', 'MONGODB_URI'];
+let missingVars = false;
+
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) {
+    console.warn(`WARNING: The environment variable "${envVar}" is not set.`);
+    missingVars = true;
+  }
+}
+
+if (missingVars) {
+  console.warn('One or more required environment variables are missing. This may cause the application to fail at runtime.');
+  console.warn('Please check your .env file or your hosting provider\'s environment variable settings.');
+}
+
 const app = express();
 app.use(cors({
   origin: process.env.FRONTEND_URL,
