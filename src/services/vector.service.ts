@@ -2,6 +2,7 @@ import { DataRepository } from '../repositories/data.repository';
 import { VectorRepository } from '../repositories/vector.repository';
 import { GeminiService } from './gemini.service';
 import { Metadata } from '../models/types';
+import { connectToDatabase, closeDatabaseConnection } from './mongo.service';
 
 let isIndexLoaded = false;
 let metadata: Metadata[] = [];
@@ -31,32 +32,42 @@ export class VectorService {
   async buildIndex(): Promise<void> {
     console.log('Building vector index...');
 
-    const quranVerses = await this.dataRepository.getQuranVerses();
-    const hadiths = await this.dataRepository.getHadith();
+    try {
+      // Ensure the database is connected before trying to build
+      await connectToDatabase();
 
-    const documents = [
-      ...quranVerses.map(v => ({ text: v.text, source: `Quran ${v.surah.englishName}:${v.number}` })),
-      ...hadiths.map(h => ({ text: h.hadith_english, source: `Hadith (${h.by_book})` })),
-    ];
+      const quranVerses = await this.dataRepository.getQuranVerses();
+      const hadiths = await this.dataRepository.getHadith();
 
-    metadata = []; // Reset metadata
-    this.vectorRepository.initIndex(documents.length);
+      const documents = [
+        ...quranVerses.map(v => ({ text: v.text, source: `Quran ${v.surah.englishName}:${v.number}` })),
+        ...hadiths.map(h => ({ text: h.hadith_english, source: `Hadith (${h.by_book})` })),
+      ];
 
-    console.log(`Generating embeddings for ${documents.length} documents...`);
-    for (let i = 0; i < documents.length; i++) {
-      const doc = documents[i];
-      const embedding = await this.geminiService.embedContent(doc.text);
-      const normalizedEmbedding = normalizeVector(embedding);
-      this.vectorRepository.addPoint(normalizedEmbedding, i);
-      metadata.push({ id: i, text: doc.text, source: doc.source });
-      if ((i + 1) % 100 === 0) {
-        console.log(`Embedded ${i + 1}/${documents.length} documents...`);
+      metadata = []; // Reset metadata
+      this.vectorRepository.initIndex(documents.length);
+
+      console.log(`Generating embeddings for ${documents.length} documents...`);
+      for (let i = 0; i < documents.length; i++) {
+        const doc = documents[i];
+        const embedding = await this.geminiService.embedContent(doc.text);
+        const normalizedEmbedding = normalizeVector(embedding);
+        this.vectorRepository.addPoint(normalizedEmbedding, i);
+        metadata.push({ id: i, text: doc.text, source: doc.source });
+        if ((i + 1) % 100 === 0) {
+          console.log(`Embedded ${i + 1}/${documents.length} documents...`);
+        }
       }
+    } catch (error) {
+      console.warn('WARNING: Failed to build vector index from external APIs. This is likely due to missing or invalid API keys or a database connection issue.');
+      console.warn('An empty vector index will be created. The application will run, but Q&A functionality will be limited.');
+      metadata = [];
+      this.vectorRepository.initIndex(0); // Initialize an empty index
     }
 
     await this.vectorRepository.saveIndex(metadata);
     isIndexLoaded = true;
-    console.log(`Index built with ${documents.length} documents.`);
+    console.log(`Index built with ${metadata.length} documents.`);
   }
 
   async loadIndex(): Promise<void> {
@@ -65,23 +76,33 @@ export class VectorService {
       return;
     }
 
+    // Connect to the database before attempting to load the index
+    await connectToDatabase();
+
     const loaded = await this.vectorRepository.loadIndex();
     if (loaded) {
       metadata = loaded.metadata;
       isIndexLoaded = true;
+      console.log(`Successfully loaded index with ${metadata.length} documents from MongoDB.`);
     } else {
-      // In a production environment like Render, we should not build the index on startup.
-      // The index should be pre-built and included in the deployment.
-      console.error('CRITICAL: Index files not found. The application cannot start.');
-      console.error('Please run "npm run build-index" locally and commit the generated files.');
-      process.exit(1); // Exit the process with an error code
+      // If no index is found in the database, initialize an empty one.
+      console.warn('WARNING: No index found in the database. Initializing an empty index.');
+      console.warn('The application will run, but search functionality will be disabled until a valid index is built.');
+      console.warn('To fix this, run "npm run build-index" with the required environment variables set.');
+      metadata = [];
+      this.vectorRepository.initIndex(0);
+      isIndexLoaded = true;
     }
   }
 
   async search(query: string, k: number = 5): Promise<Metadata[]> {
     if (!isIndexLoaded) {
-      // This should not happen in production if loadIndex is called on startup.
       throw new Error('Index is not loaded. Please ensure the server is initialized correctly.');
+    }
+
+    if (metadata.length === 0) {
+      console.warn('Search performed on an empty index. No results will be returned.');
+      return [];
     }
 
     const queryEmbedding = await this.geminiService.embedContent(query);
@@ -99,6 +120,16 @@ if (require.main === module) {
     const vectorRepo = new VectorRepository();
     const geminiService = new GeminiService();
     const vectorService = new VectorService(dataRepo, vectorRepo, geminiService);
-    vectorService.buildIndex().catch(console.error);
+
+    vectorService.buildIndex()
+      .then(() => {
+        console.log('Index build process finished.');
+        // Close the database connection gracefully after the script runs
+        return closeDatabaseConnection();
+      })
+      .catch(error => {
+        console.error("Failed to build index:", error.message);
+        process.exit(1);
+      });
   }
 }
