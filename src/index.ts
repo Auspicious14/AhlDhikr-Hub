@@ -8,7 +8,7 @@ const app = express();
 app.use(express.json());
 
 // Singleton promise to ensure initialization runs only once
-let initializationPromise = null;
+let initializationPromise: Promise<void> | null = null;
 const initialize = () => {
   if (!initializationPromise) {
     initializationPromise = (async () => {
