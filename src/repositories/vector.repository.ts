@@ -1,16 +1,16 @@
 import { HierarchicalNSW } from 'hnswlib-node';
 import { Binary, Document } from 'mongodb';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { connectToDatabase } from '../services/mongo.service';
 import { Metadata } from '../models/types';
 
 const DIMENSION = 768; // Dimension for the 'embedding-001' model
 const INDEX_COLLECTION = 'vector_index';
-const INDEX_ID = 'singleton_islamic_index'; // Use a fixed ID to ensure only one index document
+const INDEX_ID = 'singleton_islamic_index';
+// Vercel and other serverless environments provide a writable /tmp directory
+const TMP_INDEX_PATH = path.join('/tmp', 'islamic_index.bin');
 
-/**
- * Defines the schema for the document that will be stored in MongoDB.
- * Using a specific interface with strong types helps prevent TS errors.
- */
 interface IndexDocument extends Document {
   _id: string;
   index_data: Binary;
@@ -26,48 +26,59 @@ export class VectorRepository {
   }
 
   /**
-   * Saves the in-memory index and metadata to a MongoDB collection.
+   * Saves the in-memory index to MongoDB by first writing it to a temporary file.
    */
   async saveIndex(metadata: Metadata[]): Promise<void> {
     const db = await connectToDatabase();
-    // Strongly type the collection with the new interface
     const collection = db.collection<IndexDocument>(INDEX_COLLECTION);
 
-    // Use writeIndexSync to get the index data as a buffer
-    const indexData = this.index.writeIndexSync();
+    // 1. Write the index to the temporary filesystem
+    await this.index.writeIndex(TMP_INDEX_PATH);
+
+    // 2. Read the file back into a buffer
+    const indexDataBuffer = await fs.readFile(TMP_INDEX_PATH);
 
     const indexDocument: IndexDocument = {
       _id: INDEX_ID,
-      index_data: new Binary(indexData),
+      index_data: new Binary(indexDataBuffer),
       metadata: metadata,
       updatedAt: new Date(),
     };
 
+    // 3. Save the buffer to MongoDB
     await collection.updateOne(
-      { _id: INDEX_ID }, // The filter now correctly matches the string _id
+      { _id: INDEX_ID },
       { $set: indexDocument },
       { upsert: true }
     );
+
+    // 4. Clean up the temporary file
+    await fs.unlink(TMP_INDEX_PATH);
 
     console.log('Vector index and metadata saved to MongoDB.');
   }
 
   /**
-   * Loads the index and metadata from the MongoDB collection into memory.
+   * Loads the index from MongoDB by writing the stored buffer to a temporary file.
    */
   async loadIndex(): Promise<{ index: HierarchicalNSW; metadata: Metadata[] } | null> {
     try {
       const db = await connectToDatabase();
       const collection = db.collection<IndexDocument>(INDEX_COLLECTION);
 
-      // The query now correctly uses a string for the _id
       const indexDocument = await collection.findOne({ _id: INDEX_ID });
 
       if (indexDocument && indexDocument.index_data) {
         const indexDataBuffer = indexDocument.index_data.buffer;
 
-        // Use readIndexSync to load the index from the buffer
-        this.index.readIndexSync(indexDataBuffer);
+        // 1. Write the buffer from DB to a temporary file
+        await fs.writeFile(TMP_INDEX_PATH, indexDataBuffer);
+
+        // 2. Load the index from the temporary file
+        await this.index.readIndex(TMP_INDEX_PATH);
+
+        // 3. Clean up the temporary file
+        await fs.unlink(TMP_INDEX_PATH);
 
         const metadata = indexDocument.metadata;
         console.log('Vector index and metadata loaded from MongoDB.');
