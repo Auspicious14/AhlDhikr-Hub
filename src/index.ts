@@ -5,26 +5,40 @@ import apiRouter, { getVectorService } from './routes/api.routes';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
 app.use(express.json());
-app.use('/api', apiRouter);
 
-const startServer = async () => {
-  try {
-    // Get the vector service instance from the routes file to initialize it
-    const vectorService = getVectorService();
-    console.log('Initializing and loading vector index...');
-    await vectorService.loadIndex();
-
-    app.listen(PORT, () => {
-      console.log(`Server is running on http://localhost:${PORT}`);
-      console.log('API endpoints are available at /api');
-    });
-  } catch (error) {
-    console.error('Failed to start the server:', error);
-    process.exit(1);
+// Singleton promise to ensure initialization runs only once
+let initializationPromise = null;
+const initialize = () => {
+  if (!initializationPromise) {
+    initializationPromise = (async () => {
+      try {
+        const vectorService = getVectorService();
+        console.log('Initializing and loading vector index...');
+        await vectorService.loadIndex();
+        console.log('Vector index loaded successfully.');
+      } catch (error) {
+        console.error('Failed to initialize vector service:', error);
+        // Make the promise reject if initialization fails
+        throw error;
+      }
+    })();
   }
+  return initializationPromise;
 };
 
-startServer();
+// Start initialization right away
+initialize();
+
+// All API routes will first wait for the initialization to complete
+app.use('/api', async (req, res, next) => {
+  try {
+    await initializationPromise;
+    apiRouter(req, res, next); // Pass control to the actual router
+  } catch (error) {
+    console.error('API request failed due to initialization error:', error);
+    res.status(503).send('Service Unavailable: The server is not ready to handle requests.');
+  }
+});
+
+export default app;
