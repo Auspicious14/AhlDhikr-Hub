@@ -1,10 +1,16 @@
 import express from 'express';
 import * as dotenv from 'dotenv';
 import apiRouter, { getVectorService } from './routes/api.routes';
+import cors from 'cors'
 
 dotenv.config();
 
 const app = express();
+app.use(cors({
+  origin: process.env.FRONTEND_URL,
+  credentials: true,
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+}))
 app.use(express.json());
 
 // Singleton promise to ensure initialization runs only once
