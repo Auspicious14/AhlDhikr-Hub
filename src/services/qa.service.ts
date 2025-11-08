@@ -1,37 +1,112 @@
 import { GeminiService } from './gemini.service';
 import { VectorService } from './vector.service';
+import { AnswerRepository } from '../repositories/answer.repository';
+import { CategoryService } from './category.service';
+import { IAnswer, ISource } from '../models/answer';
+import slugify from 'slugify';
 import { Metadata } from '../models/types';
 
 export class QaService {
   private geminiService: GeminiService;
   private vectorService: VectorService;
+  private answerRepository: AnswerRepository;
+  private categoryService: CategoryService;
 
-  constructor(geminiService: GeminiService, vectorService: VectorService) {
+  constructor(
+    geminiService: GeminiService,
+    vectorService: VectorService,
+    answerRepository: AnswerRepository,
+    categoryService: CategoryService
+  ) {
     this.geminiService = geminiService;
     this.vectorService = vectorService;
+    this.answerRepository = answerRepository;
+    this.categoryService = categoryService;
   }
 
-  async askQuestion(question: string): Promise<{ answer: string; sources: Metadata[] }> {
+  private_create_slug(question: string): string {
+    return slugify(question, { lower: true, strict: true });
+  }
+
+  private_create_answer_snippet(answer: string): string {
+    const snippet = answer.split('</p>')[0].replace('<p>', '');
+    return snippet.length > 200 ? snippet.substring(0, 200) + '...' : snippet;
+  }
+
+  private_determine_category(context: Metadata[]): string {
+    const sourceCounts: { [key: string]: number } = {};
+    for (const item of context) {
+      const sourceName = item.source.split(' ')[0]; // "Quran" or "Hadith"
+      sourceCounts[sourceName] = (sourceCounts[sourceName] || 0) + 1;
+    }
+    return Object.keys(sourceCounts).reduce((a, b) => sourceCounts[a] > sourceCounts[b] ? a : b, 'Uncategorized');
+  }
+
+  private_format_sources(context: Metadata[]): ISource[] {
+    return context.map(c => {
+      const type = c.source.startsWith('Quran') ? 'Qur\'an' : 'Hadith';
+      return {
+        citation: c.source,
+        type: type,
+        url: '#', // Placeholder
+        arabic: '', // Placeholder
+        transliteration: '', // Placeholder
+        audioUrl: '#', // Placeholder
+      };
+    });
+  }
+
+  async askQuestion(question: string): Promise<IAnswer> {
     console.log(`Received question: "${question}"`);
+
+    const slug = this._create_slug(question);
 
     console.log('Searching for relevant sources in the vector index...');
     const context = await this.vectorService.search(question, 5);
 
     if (context.length === 0) {
-      return {
-        answer: "I don't know the answer to that question based on the available sources.",
+      const answerData = {
+        question,
+        slug,
+        answer: "<p>I don't know the answer to that question based on the available sources.</p>",
+        answerSnippet: "I don't know the answer to that question...",
+        source: 'System',
+        category: 'Uncategorized',
         sources: [],
       };
+      return this.answerRepository.createAnswer(answerData);
     }
 
     console.log(`Found ${context.length} relevant sources.`);
-
     const contextTexts = context.map(c => `[Source: ${c.source}] ${c.text}`);
 
     console.log('Generating answer with Gemini...');
-    const answer = await this.geminiService.generateAnswer(question, contextTexts);
+    const answerHtml = await this.geminiService.generateAnswer(question, contextTexts);
     console.log('Successfully generated answer.');
 
-    return { answer, sources: context };
+    const answerSnippet = this._create_answer_snippet(answerHtml);
+    const categoryName = this._determine_category(context);
+    const category = await this.categoryService.findOrCreateCategory(categoryName);
+    const sources = this._format_sources(context);
+
+    const answerData: Partial<IAnswer> = {
+      question,
+      slug,
+      answer: answerHtml,
+      answerSnippet,
+      source: sources.length > 0 ? sources[0].citation : 'System',
+      category: category.name,
+      sources,
+    };
+
+    return this.answerRepository.createAnswer(answerData);
+  }
+
+  async getAnswerBySlug(slug: string): Promise<IAnswer | null> {
+    return this.answerRepository.findAnswerBySlug(slug);
+  }
+
+  async getRecentQuestions(limit: number = 5): Promise<Pick<IAnswer, 'question' | 'slug'>[]> {
+    return this.answerRepository.findRecentAnswers(limit);
   }
 }

@@ -12,19 +12,47 @@ export class QaController {
   }
 
   async ask(req: Request, res: Response): Promise<void> {
-    const question = req.query.question as string;
+    const { question } = req.body;
 
     if (!question) {
-      res.status(400).json({ error: 'Question is a required query parameter.' });
+      res.status(400).json({ error: 'Question is a required body parameter.' });
       return;
     }
 
     try {
       const result = await this.qaService.askQuestion(question);
-      res.status(200).json(result);
+      res.status(201).json(result);
     } catch (error) {
       console.error('Error processing question:', error);
       res.status(500).json({ error: 'An internal error occurred while processing the question.' });
+    }
+  }
+
+  async getAnswer(req: Request, res: Response): Promise<void> {
+    const { slug } = req.params;
+
+    try {
+      const answer = await this.qaService.getAnswerBySlug(slug);
+      if (answer) {
+        res.status(200).json(answer);
+      } else {
+        res.status(404).json({ error: 'Answer not found.' });
+      }
+    } catch (error) {
+      console.error('Error fetching answer:', error);
+      res.status(500).json({ error: 'An internal error occurred while fetching the answer.' });
+    }
+  }
+
+  async getRecentQuestions(req: Request, res: Response): Promise<void> {
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
+
+    try {
+      const questions = await this.qaService.getRecentQuestions(limit);
+      res.status(200).json(questions);
+    } catch (error) {
+      console.error('Error fetching recent questions:', error);
+      res.status(500).json({ error: 'An internal error occurred while fetching recent questions.' });
     }
   }
 

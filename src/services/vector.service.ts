@@ -59,8 +59,19 @@ export class VectorService {
         }
       }
     } catch (error) {
-      console.warn('WARNING: Failed to build vector index from external APIs. This is likely due to missing or invalid API keys or a database connection issue.');
-      console.warn('An empty vector index will be created. The application will run, but Q&A functionality will be limited.');
+      console.error('ERROR: Failed to build vector index. This is a critical error.', error);
+      console.warn('An empty vector index will be created. The application will run, but Q&A functionality will be severely limited.');
+
+      if (error instanceof Error) {
+        if (error.message.includes('MONGODB_URI')) {
+          console.error('The database connection string seems to be missing or invalid. Please check your MONGODB_URI environment variable.');
+        } else if (error.message.includes('HADITH_API_KEY')) {
+          console.error('The Hadith API key is missing. Please check your HADITH_API_KEY environment variable.');
+        } else if (error.message.includes('GEMINI_API_KEY')) {
+            console.error('The Gemini API key is missing. Please check your GEMINI_API_KEY environment variable.');
+        }
+      }
+
       metadata = [];
       this.vectorRepository.initIndex(0); // Initialize an empty index
     }
