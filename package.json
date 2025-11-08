@@ -17,7 +17,7 @@
     "rag",
     "vector-search"
   ],
-  "author": "",
+  "author": "Auspicious",
   "license": "ISC",
   "dependencies": {
     "@google/generative-ai": "^0.11.3",
@@ -27,11 +27,13 @@
     "express": "^4.19.2",
     "hnswlib-node": "^3.0.0",
     "mongodb": "^7.0.0",
+    "cors": "2.8.5",
     "ts-node": "^10.9.2"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^20.12.12",
+    "@types/cors": "^2.8.19",
     "typescript": "^5.4.5"
   }
 }
