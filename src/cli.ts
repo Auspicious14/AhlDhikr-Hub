@@ -14,14 +14,24 @@ const askQuestion = (query: string): Promise<string> => {
   return new Promise(resolve => rl.question(query, resolve));
 };
 
+import { AnswerRepository } from './repositories/answer.repository';
+import { CategoryRepository } from './repositories/category.repository';
+import { CategoryService } from './services/category.service';
+
+// ... imports
+
 // Main CLI function
 const main = async () => {
   // --- Dependency Injection ---
   const dataRepository = new DataRepository();
   const vectorRepository = new VectorRepository();
   const geminiService = new GeminiService();
+  const answerRepository = new AnswerRepository();
+  const categoryRepository = new CategoryRepository();
+  
+  const categoryService = new CategoryService(categoryRepository);
   const vectorService = new VectorService(dataRepository, vectorRepository, geminiService);
-  const qaService = new QaService(geminiService, vectorService);
+  const qaService = new QaService(geminiService, vectorService, answerRepository, categoryService);
   // --- End of Dependency Injection ---
 
   console.log('Initializing and loading the knowledge base...');
@@ -49,7 +59,7 @@ const main = async () => {
       if (sources.length > 0) {
         console.log('\n--- Sources ---');
         sources.forEach(c => {
-          console.log(`- [${c.source}] ${c.text}`);
+        console.log(`- [${c.type}] ${c.citation}`);
         });
       }
       console.log('---------------');

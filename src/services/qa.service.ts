@@ -24,16 +24,16 @@ export class QaService {
     this.categoryService = categoryService;
   }
 
-  private_create_slug(question: string): string {
+  private _create_slug(question: string): string {
     return slugify(question, { lower: true, strict: true });
   }
 
-  private_create_answer_snippet(answer: string): string {
+  private _create_answer_snippet(answer: string): string {
     const snippet = answer.split('</p>')[0].replace('<p>', '');
     return snippet.length > 200 ? snippet.substring(0, 200) + '...' : snippet;
   }
 
-  private_determine_category(context: Metadata[]): string {
+  private _determine_category(context: Metadata[]): string {
     const sourceCounts: { [key: string]: number } = {};
     for (const item of context) {
       const sourceName = item.source.split(' ')[0]; // "Quran" or "Hadith"
@@ -42,7 +42,7 @@ export class QaService {
     return Object.keys(sourceCounts).reduce((a, b) => sourceCounts[a] > sourceCounts[b] ? a : b, 'Uncategorized');
   }
 
-  private_format_sources(context: Metadata[]): ISource[] {
+  private _format_sources(context: Metadata[]): ISource[] {
     return context.map(c => {
       const type = c.source.startsWith('Quran') ? 'Qur\'an' : 'Hadith';
       return {

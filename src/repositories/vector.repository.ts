@@ -5,11 +5,13 @@ import * as path from 'path';
 import { connectToDatabase } from '../services/mongo.service';
 import { Metadata } from '../models/types';
 
+import * as os from 'os';
+
 const DIMENSION = 768; // Dimension for the 'embedding-001' model
 const INDEX_COLLECTION = 'vector_index';
 const INDEX_ID = 'singleton_islamic_index';
-// Vercel and other serverless environments provide a writable /tmp directory
-const TMP_INDEX_PATH = path.join('/tmp', 'islamic_index.bin');
+// Use os.tmpdir() for cross-platform compatibility
+const TMP_INDEX_PATH = path.join(os.tmpdir(), 'islamic_index.bin');
 
 interface IndexDocument extends Document {
   _id: string;
