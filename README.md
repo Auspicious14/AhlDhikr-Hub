@@ -4,18 +4,18 @@ This project is a TypeScript and Node.js-based backend for an Islamic Q&A platfo
 
 ## Features
 
--   **RAG (Retrieval-Augmented Generation):** The system retrieves relevant texts from the Quran and Hadith before generating an answer.
--   **Vector Search:** Uses `hnswlib-node` for fast and efficient similarity search.
--   **Automatic Indexing:** On the first run, the platform automatically builds a vector index of over 1000 Quranic verses and Hadith.
--   **REST API:** Exposes endpoints for asking questions and rebuilding the index.
--   **CLI Demo:** Includes a command-line interface for testing and demonstration.
--   **Caching:** Caches the Quran and Hadith data to disk to avoid repeated downloads.
+- **RAG (Retrieval-Augmented Generation):** The system retrieves relevant texts from the Quran and Hadith before generating an answer.
+- **Vector Search:** Uses `hnswlib-node` for fast and efficient similarity search.
+- **Automatic Indexing:** On the first run, the platform automatically builds a vector index of over 1000 Quranic verses and Hadith.
+- **REST API:** Exposes endpoints for asking questions and rebuilding the index.
+- **CLI Demo:** Includes a command-line interface for testing and demonstration.
+- **Caching:** Caches the Quran and Hadith data to disk to avoid repeated downloads.
 
 ## Prerequisites
 
--   Node.js (v14 or later)
--   npm
--   A Google Gemini API key
+- Node.js (v14 or later)
+- npm
+- A Google Gemini API key
 
 ## Setup
 
@@ -34,11 +34,22 @@ This project is a TypeScript and Node.js-based backend for an Islamic Q&A platfo
 
 3.  **Set up your environment variables:**
 
-    Create a `.env` file in the root of the project and add your Gemini API key:
+    Create a `.env` file in the root of the project and add your API keys and configuration:
 
     ```
     GEMINI_API_KEY=your_gemini_api_key
+    HADITH_API_KEY=your_hadith_api_key
+    MONGODB_URI=your_mongodb_connection_string
+
+    # Optional: Vector Index Configuration
+    MAX_DOCUMENTS_TO_INDEX=1000        # Reduce if hitting API quota limits
+    EMBEDDING_DELAY_MS=100             # Increase if hitting rate limits
     ```
+
+    **Configuration Options:**
+
+    - `MAX_DOCUMENTS_TO_INDEX`: Maximum number of documents to process (default: 1000). Reduce this if you encounter API quota limits.
+    - `EMBEDDING_DELAY_MS`: Delay in milliseconds between embedding requests (default: 100ms). Increase this if you hit rate limits.
 
 4.  **Build the project:**
 
@@ -70,13 +81,13 @@ The server will be available at `http://localhost:3000`.
 
 #### API Endpoints
 
--   `GET /api/ask?question=<your_question>`
+- `GET /api/ask?question=<your_question>`
 
-    This endpoint accepts a question as a query parameter and returns a JSON object with the answer and the sources used to generate it.
+  This endpoint accepts a question as a query parameter and returns a JSON object with the answer and the sources used to generate it.
 
--   `POST /api/build-index`
+- `POST /api/build-index`
 
-    This endpoint rebuilds the vector index.
+  This endpoint rebuilds the vector index.
 
 ### Using the CLI Demo
 

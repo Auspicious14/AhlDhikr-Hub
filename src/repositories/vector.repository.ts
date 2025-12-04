@@ -1,30 +1,37 @@
-import { HierarchicalNSW } from 'hnswlib-node';
-import { Binary, Document } from 'mongodb';
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { connectToDatabase } from '../services/mongo.service';
-import { Metadata } from '../models/types';
+import { HierarchicalNSW } from "hnswlib-node";
+import { Binary, Document } from "mongodb";
+import * as fs from "fs/promises";
+import * as path from "path";
+import { connectToDatabase } from "../services/mongo.service";
+import { Metadata } from "../models/types";
 
-import * as os from 'os';
+import * as os from "os";
 
-const DIMENSION = 768; // Dimension for the 'embedding-001' model
-const INDEX_COLLECTION = 'vector_index';
-const INDEX_ID = 'singleton_islamic_index';
+// Default dimension (can be overridden in constructor)
+const DEFAULT_DIMENSION = 768; // Gemini's embedding-001 model
+const INDEX_COLLECTION = "vector_index";
+const INDEX_ID = "singleton_islamic_index";
 // Use os.tmpdir() for cross-platform compatibility
-const TMP_INDEX_PATH = path.join(os.tmpdir(), 'islamic_index.bin');
+const TMP_INDEX_PATH = path.join(os.tmpdir(), "islamic_index.bin");
 
 interface IndexDocument extends Document {
   _id: string;
   index_data: Binary;
   metadata: Metadata[];
+  dimension: number; // Store dimension in DB
   updatedAt: Date;
 }
 
 export class VectorRepository {
   private index: HierarchicalNSW;
+  private dimension: number;
 
-  constructor() {
-    this.index = new HierarchicalNSW('cosine', DIMENSION);
+  constructor(dimension?: number) {
+    this.dimension = dimension || DEFAULT_DIMENSION;
+    this.index = new HierarchicalNSW("cosine", this.dimension);
+    console.log(
+      `📐 Vector repository initialized with dimension: ${this.dimension}`
+    );
   }
 
   /**
@@ -44,6 +51,7 @@ export class VectorRepository {
       _id: INDEX_ID,
       index_data: new Binary(indexDataBuffer),
       metadata: metadata,
+      dimension: this.dimension,
       updatedAt: new Date(),
     };
 
@@ -57,13 +65,16 @@ export class VectorRepository {
     // 4. Clean up the temporary file
     await fs.unlink(TMP_INDEX_PATH);
 
-    console.log('Vector index and metadata saved to MongoDB.');
+    console.log("Vector index and metadata saved to MongoDB.");
   }
 
   /**
    * Loads the index from MongoDB by writing the stored buffer to a temporary file.
    */
-  async loadIndex(): Promise<{ index: HierarchicalNSW; metadata: Metadata[] } | null> {
+  async loadIndex(): Promise<{
+    index: HierarchicalNSW;
+    metadata: Metadata[];
+  } | null> {
     try {
       const db = await connectToDatabase();
       const collection = db.collection<IndexDocument>(INDEX_COLLECTION);
@@ -83,14 +94,14 @@ export class VectorRepository {
         await fs.unlink(TMP_INDEX_PATH);
 
         const metadata = indexDocument.metadata;
-        console.log('Vector index and metadata loaded from MongoDB.');
+        console.log("Vector index and metadata loaded from MongoDB.");
         return { index: this.index, metadata };
       }
 
-      console.log('Could not find index in MongoDB.');
+      console.log("Could not find index in MongoDB.");
       return null;
     } catch (error) {
-      console.error('Error loading index from MongoDB:', error);
+      console.error("Error loading index from MongoDB:", error);
       return null;
     }
   }
