@@ -39,6 +39,7 @@ const router = Router();
 
 // Define routes
 router.post("/ask", (req, res) => qaController.ask(req, res));
+router.post("/ask-stream", (req, res) => qaController.askStream(req, res));
 router.get("/ask/:slug", (req, res) => qaController.getAnswer(req, res));
 router.get("/recent-questions", (req, res) =>
   qaController.getRecentQuestions(req, res)
