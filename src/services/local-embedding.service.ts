@@ -1,5 +1,5 @@
 // Local embedding service using Transformers.js
-// This is optional - only works if @xenova/transformers is installed
+// Note: @xenova/transformers is an ES Module, so we use dynamic import
 
 export class LocalEmbeddingService {
   private extractor: any = null;
@@ -19,28 +19,35 @@ export class LocalEmbeddingService {
     }
 
     try {
-      // Dynamic import to make @xenova/transformers optional
-      this.transformers = await import("@xenova/transformers");
-
-      // Configure transformers.js to use local cache
-      this.transformers.env.cacheDir = "./models";
-
-      console.log(`Loading local embedding model: ${this.modelName}...`);
+      console.log(`📥 Loading local embedding model: ${this.modelName}...`);
       console.log(
-        "(This may take a few minutes on first run to download the model)"
+        "⏳ (This may take a few minutes on first run to download the model ~90MB)"
       );
 
+      // Dynamic import for ES Module
+      this.transformers = await eval('import("@xenova/transformers")');
+
+      // Configure cache directory
+      this.transformers.env.cacheDir = "./models";
+
+      // Load the pipeline
       this.extractor = await this.transformers.pipeline(
         "feature-extraction",
         this.modelName
       );
 
-      console.log("✓ Local embedding model loaded successfully!");
-    } catch (error) {
+      console.log("✅ Local embedding model loaded successfully!");
+    } catch (error: any) {
+      console.error("❌ Failed to load local embeddings:", error.message);
       throw new Error(
-        "Failed to load local embeddings. Please install @xenova/transformers:\n" +
-          "  npm install @xenova/transformers\n\n" +
-          "Or use a different embedding provider (huggingface or gemini) in your .env file."
+        "Failed to load local embeddings. Error: " +
+          error.message +
+          "\n\n" +
+          "Troubleshooting:\n" +
+          "1. Make sure @xenova/transformers is installed: npm install @xenova/transformers\n" +
+          "2. Check your internet connection (needed for first-time model download)\n" +
+          "3. Or use a different embedding provider in your .env file:\n" +
+          "   EMBEDDING_PROVIDER=huggingface"
       );
     }
   }
@@ -66,8 +73,8 @@ export class LocalEmbeddingService {
       const embedding: number[] = Array.from(output.data) as number[];
 
       return embedding;
-    } catch (error) {
-      throw new Error(`Local embedding error: ${error}`);
+    } catch (error: any) {
+      throw new Error(`Local embedding error: ${error.message}`);
     }
   }
 

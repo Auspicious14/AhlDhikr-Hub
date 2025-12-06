@@ -1,5 +1,5 @@
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
-import * as dotenv from 'dotenv';
+import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
+import * as dotenv from "dotenv";
 
 dotenv.config();
 
@@ -10,11 +10,16 @@ export class GeminiService {
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error('GEMINI_API_KEY is not set in the environment variables.');
+      throw new Error(
+        "GEMINI_API_KEY is not set in the environment variables."
+      );
     }
     const genAI = new GoogleGenerativeAI(apiKey);
-    this.embeddingModel = genAI.getGenerativeModel({ model: 'embedding-001' });
-    this.generativeModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    this.embeddingModel = genAI.getGenerativeModel({ model: "embedding-001" });
+    // Use gemini-1.5-pro which is available in v1beta API
+    this.generativeModel = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash-lite",
+    });
   }
 
   async embedContent(text: string): Promise<number[]> {
@@ -31,18 +36,18 @@ export class GeminiService {
 
     const prompt = [
       systemPrompt,
-      'Here are the sources:',
+      "Here are the sources:",
       ...context.map((c, i) => `Source ${i + 1}: ${c}`),
       `\nQuestion: ${question}`,
-    ].join('\n\n');
+    ].join("\n\n");
 
     try {
       const result = await this.generativeModel.generateContent(prompt);
       const response = await result.response;
       return response.text();
     } catch (error) {
-      console.error('Error generating answer from Gemini:', error);
-      throw new Error('Failed to generate answer.');
+      console.error("Error generating answer from Gemini:", error);
+      throw new Error("Failed to generate answer.");
     }
   }
 }
