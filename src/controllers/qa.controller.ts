@@ -24,11 +24,9 @@ export class QaController {
       res.status(201).json(result);
     } catch (error) {
       console.error("Error processing question:", error);
-      res
-        .status(500)
-        .json({
-          error: "An internal error occurred while processing the question.",
-        });
+      res.status(500).json({
+        error: "An internal error occurred while processing the question.",
+      });
     }
   }
 
@@ -64,11 +62,6 @@ export class QaController {
         res.write(
           `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`
         );
-
-        // Flush the response to ensure immediate delivery
-        if (res.flush) {
-          res.flush();
-        }
       }
 
       // Close the connection
@@ -96,11 +89,9 @@ export class QaController {
       }
     } catch (error) {
       console.error("Error fetching answer:", error);
-      res
-        .status(500)
-        .json({
-          error: "An internal error occurred while fetching the answer.",
-        });
+      res.status(500).json({
+        error: "An internal error occurred while fetching the answer.",
+      });
     }
   }
 
@@ -112,11 +103,9 @@ export class QaController {
       res.status(200).json(questions);
     } catch (error) {
       console.error("Error fetching recent questions:", error);
-      res
-        .status(500)
-        .json({
-          error: "An internal error occurred while fetching recent questions.",
-        });
+      res.status(500).json({
+        error: "An internal error occurred while fetching recent questions.",
+      });
     }
   }
 
@@ -131,11 +120,9 @@ export class QaController {
         .json({ message: "Index building process has been initiated." });
     } catch (error) {
       console.error("Error initiating index build:", error);
-      res
-        .status(500)
-        .json({
-          error: "An internal error occurred while initiating the index build.",
-        });
+      res.status(500).json({
+        error: "An internal error occurred while initiating the index build.",
+      });
     }
   }
 }

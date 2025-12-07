@@ -65,7 +65,7 @@ export class QaService {
     const slug = this._create_slug(question);
 
     console.log("Searching for relevant sources in the vector index...");
-    const context = await this.vectorService.search(question, 5);
+    const context = await this.vectorService.search(question, 10);
 
     if (context.length === 0) {
       const answerData = {
@@ -128,8 +128,14 @@ export class QaService {
         data: { message: "Searching for relevant sources..." },
       };
 
-      // Step 2: Search for sources
-      const context = await this.vectorService.search(question, 5);
+      // Step 2: Search for sources (increased to 10 for better coverage)
+      const context = await this.vectorService.search(question, 10);
+
+      // Log sources for debugging
+      console.log(`Found ${context.length} sources:`);
+      context.forEach((c, i) => {
+        console.log(`  ${i + 1}. ${c.source}: ${c.text.substring(0, 80)}...`);
+      });
 
       if (context.length === 0) {
         yield {
