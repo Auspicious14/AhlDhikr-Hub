@@ -1,14 +1,14 @@
-import axios from 'axios';
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { QuranVerse, Hadith } from '../models/types';
-import * as dotenv from 'dotenv';
+import axios from "axios";
+import * as fs from "fs/promises";
+import * as path from "path";
+import { QuranVerse, Hadith } from "../models/types";
+import * as dotenv from "dotenv";
 
 dotenv.config();
 
-const DATA_DIR = path.join(__dirname, '..', '..', 'data');
-const QURAN_FILE = path.join(DATA_DIR, 'quran.json');
-const HADITH_FILE = path.join(DATA_DIR, 'hadith.json');
+const DATA_DIR = path.join(__dirname, "..", "..", "data");
+const QURAN_FILE = path.join(DATA_DIR, "quran.json");
+const HADITH_FILE = path.join(DATA_DIR, "hadith.json");
 const HADITH_API_KEY = process.env.HADITH_API_KEY;
 
 export class DataRepository {
@@ -23,16 +23,19 @@ export class DataRepository {
 
   async getQuranVerses(): Promise<QuranVerse[]> {
     if (await this.fileExists(QURAN_FILE)) {
-      const data = await fs.readFile(QURAN_FILE, 'utf-8');
-      console.log('Loaded Quran data from cache.');
+      const data = await fs.readFile(QURAN_FILE, "utf-8");
+      console.log("Loaded Quran data from cache.");
       return JSON.parse(data);
     }
 
-    console.log('Fetching Quran data from API...');
-    const response = await axios.get('https://api.alquran.cloud/v1/quran/en.asad');
+    console.log("Fetching Quran data from API...");
+    const response = await axios.get(
+      "https://api.alquran.cloud/v1/quran/en.asad"
+    );
     const verses = response.data.data.surahs.flatMap((surah: any) =>
       surah.ayahs.map((ayah: any) => ({
-        number: ayah.number,
+        number: ayah.number, // Global verse number (1-6236)
+        numberInSurah: ayah.numberInSurah, // Verse number within the surah
         text: ayah.text,
         surah: {
           number: surah.number,
@@ -45,22 +48,24 @@ export class DataRepository {
 
     await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.writeFile(QURAN_FILE, JSON.stringify(verses, null, 2));
-    console.log('Quran data cached.');
+    console.log("Quran data cached.");
     return verses;
   }
 
   async getHadith(): Promise<Hadith[]> {
     if (await this.fileExists(HADITH_FILE)) {
-      const data = await fs.readFile(HADITH_FILE, 'utf-8');
-      console.log('Loaded Hadith data from cache.');
+      const data = await fs.readFile(HADITH_FILE, "utf-8");
+      console.log("Loaded Hadith data from cache.");
       return JSON.parse(data);
     }
 
     if (!HADITH_API_KEY) {
-      throw new Error('HADITH_API_KEY is not set in the environment variables.');
+      throw new Error(
+        "HADITH_API_KEY is not set in the environment variables."
+      );
     }
 
-    console.log('Fetching all Hadiths from Sahih Bukhari...');
+    console.log("Fetching all Hadiths from Sahih Bukhari...");
     const allHadiths: Hadith[] = [];
     let page = 1;
     let lastPage = 1;
@@ -82,7 +87,6 @@ export class DataRepository {
         lastPage = last_page;
 
         console.log(`Fetched page ${page}/${lastPage} of Hadiths...`);
-
       } catch (error) {
         console.error(`Error fetching page ${page} of Hadiths:`, error);
         // Stop if there's an error to avoid hammering the API

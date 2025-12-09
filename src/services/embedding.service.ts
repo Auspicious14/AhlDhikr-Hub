@@ -63,7 +63,8 @@ export class EmbeddingService {
       case "huggingface":
         return new HuggingFaceService();
       case "local":
-        return new LocalEmbeddingService();
+        const localModel = process.env.LOCAL_MODEL || "Xenova/bge-m3";
+        return new LocalEmbeddingService(localModel);
       default:
         throw new Error(`Unknown embedding provider: ${this.provider}`);
     }

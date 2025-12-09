@@ -86,6 +86,7 @@ export class LocalEmbeddingService {
       "Xenova/all-MiniLM-L6-v2": 384,
       "Xenova/all-mpnet-base-v2": 768,
       "Xenova/bge-small-en-v1.5": 384,
+      "Xenova/bge-m3": 1024,
     };
 
     return dimensions[this.modelName] || 384;

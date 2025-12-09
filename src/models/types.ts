@@ -1,5 +1,6 @@
 export interface QuranVerse {
-  number: number;
+  number: number; // Global verse number (1-6236)
+  numberInSurah: number; // Verse number within the surah (e.g., 1-286 for Al-Baqarah)
   text: string;
   surah: {
     number: number;

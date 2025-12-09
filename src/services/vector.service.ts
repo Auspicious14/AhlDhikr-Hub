@@ -70,7 +70,7 @@ export class VectorService {
       const documents = [
         ...sampledQuran.map((v) => ({
           text: v.text,
-          source: `Quran ${v.surah.englishName}:${v.number}`,
+          source: `Quran ${v.surah.englishName} ${v.surah.number}:${v.numberInSurah}`,
         })),
         ...sampledHadith.map((h) => ({
           text: h.hadith_english,

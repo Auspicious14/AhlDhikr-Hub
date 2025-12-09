@@ -1,8 +1,9 @@
-import { Document, Schema, model } from 'mongoose';
+import { Document, Schema, model } from "mongoose";
 
 export interface ISource {
   citation: string;
-  type: 'Hadith' | 'Qur\'an';
+  type: "Hadith" | "Qur'an";
+  text: string; // The actual verse or hadith text
   url?: string;
   arabic?: string;
   transliteration?: string;
@@ -23,21 +24,25 @@ export interface IAnswer extends Document {
 
 const SourceSchema = new Schema<ISource>({
   citation: { type: String, required: true },
-  type: { type: String, required: true, enum: ['Hadith', 'Qur\'an'] },
+  type: { type: String, required: true, enum: ["Hadith", "Qur'an"] },
+  text: { type: String, required: true },
   url: { type: String },
   arabic: { type: String },
   transliteration: { type: String },
   audioUrl: { type: String },
 });
 
-const AnswerSchema = new Schema<IAnswer>({
-  question: { type: String, required: true },
-  slug: { type: String, required: true, unique: true },
-  answer: { type: String, required: true },
-  answerSnippet: { type: String, required: true },
-  source: { type: String, required: true },
-  category: { type: String, required: true },
-  sources: [SourceSchema],
-}, { timestamps: true });
+const AnswerSchema = new Schema<IAnswer>(
+  {
+    question: { type: String, required: true },
+    slug: { type: String, required: true, unique: true },
+    answer: { type: String, required: true },
+    answerSnippet: { type: String, required: true },
+    source: { type: String, required: true },
+    category: { type: String, required: true },
+    sources: [SourceSchema],
+  },
+  { timestamps: true }
+);
 
-export const Answer = model<IAnswer>('Answer', AnswerSchema);
+export const Answer = model<IAnswer>("Answer", AnswerSchema);

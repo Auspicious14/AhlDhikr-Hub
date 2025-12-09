@@ -102,16 +102,19 @@ export class HuggingFaceService {
    * Get the dimension of embeddings for the current model
    */
   getEmbeddingDimension(): number {
-    // Common dimensions for popular models
     const dimensions: { [key: string]: number } = {
       "BAAI/bge-small-en-v1.5": 384,
       "sentence-transformers/all-MiniLM-L6-v2": 384,
       "sentence-transformers/all-mpnet-base-v2": 768,
       "BAAI/bge-base-en-v1.5": 768,
       "BAAI/bge-large-en-v1.5": 1024,
+
+      "intfloat/multilingual-e5-large": 1024,
+      "intfloat/multilingual-e5-base": 768,
+      "intfloat/multilingual-e5-small": 384,
     };
 
-    return dimensions[this.model] || 384; // Default to 384
+    return dimensions[this.model] || 384;
   }
 
   private delay(ms: number): Promise<void> {
