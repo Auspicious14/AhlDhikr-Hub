@@ -108,7 +108,7 @@ export class VectorService {
         this.vectorRepository.addPoint(normalizedEmbedding, i);
         metadata.push({ id: i, text: doc.text, source: doc.source });
 
-        if ((i + 1) % 50 === 0) {
+        if ((i + 1) % 200 === 0) {
           console.log(
             `   ✓ Embedded ${i + 1}/${documents.length} documents (${Math.round(
               ((i + 1) / documents.length) * 100

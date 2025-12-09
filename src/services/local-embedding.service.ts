@@ -6,7 +6,7 @@ export class LocalEmbeddingService {
   private modelName: string;
   private transformers: any = null;
 
-  constructor(modelName: string = "Xenova/all-MiniLM-L6-v2") {
+  constructor(modelName: string = "Xenova/bge-m3") {
     this.modelName = modelName;
   }
 
