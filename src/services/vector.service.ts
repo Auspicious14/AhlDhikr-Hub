@@ -18,6 +18,8 @@ export class VectorService {
   private dataRepository: DataRepository;
   private vectorRepository: VectorRepository;
   private embeddingService: EmbeddingService;
+  private readonly BATCH_SIZE = 50;
+  private readonly CHECKPOINT_INTERVAL = 500; // Save every 500 documents
 
   constructor(
     dataRepository: DataRepository,
@@ -87,42 +89,110 @@ export class VectorService {
         `   Hadiths: ${hadiths.length} (sampling ${sampledHadith.length})`
       );
       console.log(`   Processing: ${documents.length} documents`);
-      console.log(`   Delay between requests: ${delayMs}ms`);
+      console.log(`   Batch Size: ${this.BATCH_SIZE}`);
 
-      metadata = []; // Reset metadata
-      this.vectorRepository.initIndex(documents.length);
+      // Check for existing index to resume
+      let startIndex = 0;
+      const existingIndex = await this.vectorRepository.loadIndex();
+
+      if (existingIndex) {
+        const currentCount = this.vectorRepository.getCurrentCount();
+        // If the existing index matches our target size or is partially built
+        if (currentCount > 0 && currentCount < documents.length) {
+          console.log(
+            `🔄 Resuming from checkpoint: ${currentCount}/${documents.length} documents already indexed.`
+          );
+          metadata = existingIndex.metadata;
+          startIndex = currentCount;
+        } else if (currentCount >= documents.length) {
+          console.log(
+            `✅ Index already complete (${currentCount} documents). Use --force to rebuild.`
+          );
+          metadata = existingIndex.metadata;
+          isIndexLoaded = true;
+          return;
+        } else {
+          // Reset if starting from scratch or invalid state
+          console.log("Starting fresh index build...");
+          metadata = [];
+          this.vectorRepository.initIndex(documents.length);
+        }
+      } else {
+        metadata = [];
+        this.vectorRepository.initIndex(documents.length);
+      }
 
       console.log(
-        `\n🚀 Generating embeddings for ${documents.length} documents...`
+        `\n🚀 Generating embeddings for ${
+          documents.length - startIndex
+        } remaining documents...`
       );
-      for (let i = 0; i < documents.length; i++) {
-        const doc = documents[i];
+
+      // Process in batches
+      for (let i = startIndex; i < documents.length; i += this.BATCH_SIZE) {
+        const batch = documents.slice(i, i + this.BATCH_SIZE);
+        const batchTexts = batch.map((d) => d.text);
 
         // Add delay to respect rate limits (except for first request)
         if (i > 0 && delayMs > 0) {
           await this.delay(delayMs);
         }
 
-        const embedding = await this.embeddingService.embedContent(doc.text);
-        const normalizedEmbedding = normalizeVector(embedding);
-        this.vectorRepository.addPoint(normalizedEmbedding, i);
-        metadata.push({ id: i, text: doc.text, source: doc.source });
+        try {
+          // Use batch embedding if available
+          const embeddings = await this.embeddingService.embedBatch(batchTexts);
 
-        if ((i + 1) % 200 === 0) {
+          for (let j = 0; j < embeddings.length; j++) {
+            const globalIndex = i + j;
+            const normalizedEmbedding = normalizeVector(embeddings[j]);
+            this.vectorRepository.addPoint(normalizedEmbedding, globalIndex);
+
+            // Ensure metadata array is filled at the correct index
+            if (metadata.length <= globalIndex) {
+              metadata.push({
+                id: globalIndex,
+                text: batch[j].text,
+                source: batch[j].source,
+              });
+            } else {
+              metadata[globalIndex] = {
+                id: globalIndex,
+                text: batch[j].text,
+                source: batch[j].source,
+              };
+            }
+          }
+
+          const progress = Math.min(i + this.BATCH_SIZE, documents.length);
           console.log(
-            `   ✓ Embedded ${i + 1}/${documents.length} documents (${Math.round(
-              ((i + 1) / documents.length) * 100
-            )}%)`
+            `   ✓ Embedded ${progress}/${
+              documents.length
+            } documents (${Math.round((progress / documents.length) * 100)}%)`
           );
+
+          // Checkpoint: Save periodically
+          if (
+            progress % this.CHECKPOINT_INTERVAL === 0 ||
+            progress === documents.length
+          ) {
+            console.log(`💾 Checkpointing at ${progress} documents...`);
+            await this.vectorRepository.saveIndex(metadata);
+          }
+        } catch (batchError) {
+          console.error(
+            `❌ Error processing batch starting at index ${i}:`,
+            batchError
+          );
+          // Save what we have so far before exiting/throwing
+          console.log("💾 Saving progress before exit...");
+          await this.vectorRepository.saveIndex(metadata);
+          throw batchError;
         }
       }
     } catch (error) {
       console.error(
         "ERROR: Failed to build vector index. This is a critical error.",
         error
-      );
-      console.warn(
-        "An empty vector index will be created. The application will run, but Q&A functionality will be severely limited."
       );
 
       if (error instanceof Error) {
@@ -140,14 +210,13 @@ export class VectorService {
           );
         }
       }
-
-      metadata = [];
-      this.vectorRepository.initIndex(0); // Initialize an empty index
+      // Don't reset metadata here, we want to keep what we have if possible
     }
 
+    // Final save to ensure everything is persisted
     await this.vectorRepository.saveIndex(metadata);
     isIndexLoaded = true;
-    console.log(`Index built with ${metadata.length} documents.`);
+    console.log(`Index built and saved with ${metadata.length} documents.`);
   }
 
   async loadIndex(): Promise<void> {

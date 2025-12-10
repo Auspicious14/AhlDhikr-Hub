@@ -106,4 +106,20 @@ export class EmbeddingService {
     // Gemini uses 768 dimensions
     return 768;
   }
+
+  /**
+   * Batch process multiple texts
+   */
+  async embedBatch(texts: string[]): Promise<number[][]> {
+    if (this.service instanceof LocalEmbeddingService) {
+      return await this.service.embedBatch(texts);
+    }
+
+    // Fallback for other services: sequential processing
+    const embeddings: number[][] = [];
+    for (const text of texts) {
+      embeddings.push(await this.service.embedContent(text));
+    }
+    return embeddings;
+  }
 }

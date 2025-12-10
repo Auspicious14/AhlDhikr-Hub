@@ -100,13 +100,17 @@ export class LocalEmbeddingService {
       await this.initialize();
     }
 
-    const embeddings: number[][] = [];
-
-    for (const text of texts) {
-      const embedding = await this.embedContent(text);
-      embeddings.push(embedding);
+    try {
+      // Use Promise.all for parallel execution which is faster than sequential
+      const promises = texts.map((text) => this.embedContent(text));
+      return await Promise.all(promises);
+    } catch (e) {
+      console.warn("Batch embedding failed, falling back to sequential:", e);
+      const embeddings: number[][] = [];
+      for (const text of texts) {
+        embeddings.push(await this.embedContent(text));
+      }
+      return embeddings;
     }
-
-    return embeddings;
   }
 }
