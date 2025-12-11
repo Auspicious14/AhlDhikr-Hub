@@ -25,14 +25,24 @@ export class LocalEmbeddingService {
       return; // Already initialized
     }
 
+    // HACK: Force bundler (Vercel/NCC) to include the dependency by seeing a static-like import structure.
+    // We wrap it in 'if (false)' so it never executes at runtime (avoiding CJS require() crash on ESM package).
+    if (false) {
+      await import("@xenova/transformers");
+    }
+
     try {
       console.log(`📥 Loading local embedding model: ${this.modelName}...`);
       console.log(
         "⏳ (This may take a few minutes on first run to download the model ~90MB)"
       );
 
-      // Dynamic import for ES Module
-      this.transformers = await eval('import("@xenova/transformers")');
+      // Dynamic import for ES Module using Function constructor to bypass TS transformation
+      const dynamicImport = new Function(
+        "modulePath",
+        "return import(modulePath)"
+      );
+      this.transformers = await dynamicImport("@xenova/transformers");
 
       // Configure cache directory
       this.transformers.env.cacheDir = "./models";
