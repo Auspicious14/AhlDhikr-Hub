@@ -7,13 +7,11 @@ import { connectToDatabase } from "../services/mongo.service";
 import { Metadata } from "../models/types";
 import * as os from "os";
 
-// Default dimension (can be overridden in constructor)
-const DEFAULT_DIMENSION = 768; // Gemini's embedding-001 model
+// Default dimension (Gemini's embedding-001/004 model)
+const DEFAULT_DIMENSION = 768; 
 const INDEX_COLLECTION = "vector_index";
 const INDEX_ID = "singleton_islamic_index";
 const GRIDFS_BUCKET_NAME = "vector_index_files";
-// Use os.tmpdir() for cross-platform compatibility
-const TMP_INDEX_PATH = path.join(os.tmpdir(), "islamic_index.bin");
 
 interface IndexDocument extends Document {
   _id: string;
@@ -35,15 +33,24 @@ export class VectorRepository {
     this.dimension = dimension || DEFAULT_DIMENSION;
     this.index = new HierarchicalNSW("cosine", this.dimension);
 
-    // Create unique identifiers based on dimension to separate indices (Local vs Gemini)
-    // Local (bge-m3) = 1024, Gemini (001/004) = 768
-    this.indexId = `${INDEX_ID}_${this.dimension}`;
-    this.gridFilename = `islamic_index_${this.dimension}.bin`;
+    // NAMING LOGIC:
+    // If we are using the Gemini dimension (768), we append a suffix to keep it separate.
+    // If we are using Local (e.g., 1024) or any other, we use the raw INDEX_ID 
+    // to preserve backward compatibility with your existing local build.
+    if (this.dimension === 768) {
+        this.indexId = `${INDEX_ID}_gemini`;
+        this.gridFilename = `islamic_index_gemini.bin`;
+    } else {
+        // Keeps the original name for your local build
+        this.indexId = INDEX_ID;
+        this.gridFilename = `islamic_index.bin`;
+    }
 
     console.log(
       `📐 Vector repository initialized with dimension: ${this.dimension}`
     );
     console.log(`   Index ID: ${this.indexId}`);
+    console.log(`   Grid Filename: ${this.gridFilename}`);
   }
 
   /**
@@ -53,22 +60,22 @@ export class VectorRepository {
     const db = await connectToDatabase();
     const collection = db.collection<IndexDocument>(INDEX_COLLECTION);
     const bucket = new GridFSBucket(db, { bucketName: GRIDFS_BUCKET_NAME });
-    const tmpPath = path.join(
-      os.tmpdir(),
-      `islamic_index_${this.dimension}.bin`
-    );
+    
+    // Use the specific filename for the temp path to avoid collisions between local/gemini builds
+    const tmpPath = path.join(os.tmpdir(), this.gridFilename);
 
     console.log(`Saving index (${this.indexId}) to disk...`);
     // 1. Write the index to the temporary filesystem
     await this.index.writeIndex(tmpPath);
 
     // 2. Upload the file to GridFS
-    console.log("Uploading index to GridFS...");
+    console.log(`Uploading index (${this.gridFilename}) to GridFS...`);
     const readStream = fs.createReadStream(tmpPath);
     const uploadStream = bucket.openUploadStream(this.gridFilename, {
       metadata: {
         dimension: this.dimension,
         updatedAt: new Date(),
+        type: this.dimension === 768 ? 'gemini' : 'local'
       },
     });
 
@@ -132,10 +139,9 @@ export class VectorRepository {
       const db = await connectToDatabase();
       const collection = db.collection<IndexDocument>(INDEX_COLLECTION);
       const bucket = new GridFSBucket(db, { bucketName: GRIDFS_BUCKET_NAME });
-      const tmpPath = path.join(
-        os.tmpdir(),
-        `islamic_index_${this.dimension}.bin`
-      );
+      
+      // Use the specific filename for the temp path
+      const tmpPath = path.join(os.tmpdir(), this.gridFilename);
 
       const indexDocument = await collection.findOne({ _id: this.indexId });
 
@@ -148,7 +154,7 @@ export class VectorRepository {
 
       // Check for GridFS file
       if (indexDocument.vectorFileId) {
-        console.log("Downloading index from GridFS...");
+        console.log(`Downloading index (${this.gridFilename}) from GridFS...`);
         const downloadStream = bucket.openDownloadStream(
           indexDocument.vectorFileId
         );
@@ -171,9 +177,7 @@ export class VectorRepository {
         console.log("Vector index and metadata loaded from MongoDB (GridFS).");
         return { index: this.index, metadata };
       }
-      // Fallback for legacy Binary format (Note: Legacy might use the old ID, so strict migration might fail here if ID changed,
-      // but since we want to PRESERVE local index, separating them is correct.
-      // If user wants to migrate local to this new structure, they'd rebuild anyway.)
+      // Fallback for legacy Binary format
       else if (indexDocument.index_data) {
         console.log("Loading legacy index format...");
         const indexDataBuffer = indexDocument.index_data.buffer;
@@ -196,13 +200,9 @@ export class VectorRepository {
   }
 
   initIndex(numPoints: number): void {
-    // If index is already initialized with a different size, we might need to resize or re-init
-    // hnswlib-node resizeIndex is available in newer versions, but initIndex resets it.
-    // For building from scratch, initIndex is fine.
     try {
       this.index.initIndex(numPoints);
     } catch (e) {
-      // If already initialized, we might need to recreate it if we want to reset
       this.index = new HierarchicalNSW("cosine", this.dimension);
       this.index.initIndex(numPoints);
     }
@@ -212,7 +212,6 @@ export class VectorRepository {
     this.index.addPoint(embedding, id);
   }
 
-  // vector.repository.ts
   search(embedding: number[], k: number): number[] {
     try {
       // Keep high ef for good recall
@@ -229,4 +228,4 @@ export class VectorRepository {
   getCurrentCount(): number {
     return this.index.getCurrentCount();
   }
-}
+                  }
