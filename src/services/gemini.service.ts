@@ -27,6 +27,16 @@ export class GeminiService {
     return result.embedding.values;
   }
 
+  async embedQuery(text: string): Promise<number[]> {
+    // Gemini embedding-001 handles both content and query similarly
+    const result = await this.embeddingModel.embedContent(text);
+    return result.embedding.values;
+  }
+
+  getEmbeddingDimension(): number {
+    return 768; // embedding-001
+  }
+
   async generateAnswer(question: string, context: string[]): Promise<string> {
     const systemPrompt = `You are an Islamic scholar AI. Your purpose is to answer questions about Islam, but only using the provided sources.
 - Cite your sources verbatim using the format [Source: ...].

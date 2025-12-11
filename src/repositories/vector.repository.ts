@@ -28,14 +28,22 @@ interface IndexDocument extends Document {
 export class VectorRepository {
   private index: HierarchicalNSW;
   private dimension: number;
+  private indexId: string;
+  private gridFilename: string;
 
   constructor(dimension?: number) {
     this.dimension = dimension || DEFAULT_DIMENSION;
     this.index = new HierarchicalNSW("cosine", this.dimension);
-    // this.index.setEf(100);
+
+    // Create unique identifiers based on dimension to separate indices (Local vs Gemini)
+    // Local (bge-m3) = 1024, Gemini (001/004) = 768
+    this.indexId = `${INDEX_ID}_${this.dimension}`;
+    this.gridFilename = `islamic_index_${this.dimension}.bin`;
+
     console.log(
       `📐 Vector repository initialized with dimension: ${this.dimension}`
     );
+    console.log(`   Index ID: ${this.indexId}`);
   }
 
   /**
@@ -45,15 +53,19 @@ export class VectorRepository {
     const db = await connectToDatabase();
     const collection = db.collection<IndexDocument>(INDEX_COLLECTION);
     const bucket = new GridFSBucket(db, { bucketName: GRIDFS_BUCKET_NAME });
+    const tmpPath = path.join(
+      os.tmpdir(),
+      `islamic_index_${this.dimension}.bin`
+    );
 
-    console.log("Saving index to disk...");
+    console.log(`Saving index (${this.indexId}) to disk...`);
     // 1. Write the index to the temporary filesystem
-    await this.index.writeIndex(TMP_INDEX_PATH);
+    await this.index.writeIndex(tmpPath);
 
     // 2. Upload the file to GridFS
     console.log("Uploading index to GridFS...");
-    const readStream = fs.createReadStream(TMP_INDEX_PATH);
-    const uploadStream = bucket.openUploadStream("islamic_index.bin", {
+    const readStream = fs.createReadStream(tmpPath);
+    const uploadStream = bucket.openUploadStream(this.gridFilename, {
       metadata: {
         dimension: this.dimension,
         updatedAt: new Date(),
@@ -74,7 +86,7 @@ export class VectorRepository {
 
     // 3. Clean up old files (optional but good practice)
     // Find the previous index document to get the old file ID
-    const oldDoc = await collection.findOne({ _id: INDEX_ID });
+    const oldDoc = await collection.findOne({ _id: this.indexId });
     if (oldDoc && oldDoc.vectorFileId) {
       try {
         await bucket.delete(oldDoc.vectorFileId);
@@ -86,7 +98,7 @@ export class VectorRepository {
 
     // 4. Save metadata and file reference to MongoDB
     const indexDocument: IndexDocument = {
-      _id: INDEX_ID,
+      _id: this.indexId,
       vectorFileId: fileId,
       metadata: metadata,
       dimension: this.dimension,
@@ -98,13 +110,13 @@ export class VectorRepository {
     delete indexDocument.index_data;
 
     await collection.updateOne(
-      { _id: INDEX_ID },
+      { _id: this.indexId },
       { $set: indexDocument, $unset: { index_data: "" } },
       { upsert: true }
     );
 
     // 5. Clean up the temporary file
-    await fsPromises.unlink(TMP_INDEX_PATH);
+    await fsPromises.unlink(tmpPath);
 
     console.log("Vector index and metadata saved to MongoDB.");
   }
@@ -120,11 +132,17 @@ export class VectorRepository {
       const db = await connectToDatabase();
       const collection = db.collection<IndexDocument>(INDEX_COLLECTION);
       const bucket = new GridFSBucket(db, { bucketName: GRIDFS_BUCKET_NAME });
+      const tmpPath = path.join(
+        os.tmpdir(),
+        `islamic_index_${this.dimension}.bin`
+      );
 
-      const indexDocument = await collection.findOne({ _id: INDEX_ID });
+      const indexDocument = await collection.findOne({ _id: this.indexId });
 
       if (!indexDocument) {
-        console.log("Could not find index document in MongoDB.");
+        console.log(
+          `Could not find index document (${this.indexId}) in MongoDB.`
+        );
         return null;
       }
 
@@ -134,7 +152,7 @@ export class VectorRepository {
         const downloadStream = bucket.openDownloadStream(
           indexDocument.vectorFileId
         );
-        const writeStream = fs.createWriteStream(TMP_INDEX_PATH);
+        const writeStream = fs.createWriteStream(tmpPath);
 
         await new Promise<void>((resolve, reject) => {
           downloadStream
@@ -144,23 +162,25 @@ export class VectorRepository {
         });
 
         // Load the index from the temporary file
-        await this.index.readIndex(TMP_INDEX_PATH);
+        await this.index.readIndex(tmpPath);
 
         // Clean up
-        await fsPromises.unlink(TMP_INDEX_PATH);
+        await fsPromises.unlink(tmpPath);
 
         const metadata = indexDocument.metadata;
         console.log("Vector index and metadata loaded from MongoDB (GridFS).");
         return { index: this.index, metadata };
       }
-      // Fallback for legacy Binary format
+      // Fallback for legacy Binary format (Note: Legacy might use the old ID, so strict migration might fail here if ID changed,
+      // but since we want to PRESERVE local index, separating them is correct.
+      // If user wants to migrate local to this new structure, they'd rebuild anyway.)
       else if (indexDocument.index_data) {
         console.log("Loading legacy index format...");
         const indexDataBuffer = indexDocument.index_data.buffer;
 
-        await fsPromises.writeFile(TMP_INDEX_PATH, indexDataBuffer);
-        await this.index.readIndex(TMP_INDEX_PATH);
-        await fsPromises.unlink(TMP_INDEX_PATH);
+        await fsPromises.writeFile(tmpPath, indexDataBuffer);
+        await this.index.readIndex(tmpPath);
+        await fsPromises.unlink(tmpPath);
 
         const metadata = indexDocument.metadata;
         console.log("Vector index and metadata loaded from MongoDB (Legacy).");
