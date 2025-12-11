@@ -1,7 +1,7 @@
-import { 
-  GoogleGenerativeAI, 
-  GenerativeModel, 
-  TaskType 
+import {
+  GoogleGenerativeAI,
+  GenerativeModel,
+  TaskType,
 } from "@google/generative-ai";
 import * as dotenv from "dotenv";
 
@@ -17,12 +17,14 @@ export class GeminiService {
       throw new Error("GEMINI_API_KEY is not set in environment variables.");
     }
     const genAI = new GoogleGenerativeAI(apiKey);
-    
+
     // Model for Embeddings (768 dimensions)
     this.embeddingModel = genAI.getGenerativeModel({ model: "embedding-001" });
-    
+
     // Model for RAG generation (Fast & Cheap)
-    this.generativeModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    this.generativeModel = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash-lite",
+    });
   }
 
   /**
@@ -32,7 +34,7 @@ export class GeminiService {
   async embedQuery(text: string): Promise<number[]> {
     try {
       const result = await this.embeddingModel.embedContent({
-        content: { parts: [{ text }] },
+        content: { parts: [{ text }], role: "USER" },
         taskType: TaskType.RETRIEVAL_QUERY,
       });
       return result.embedding.values;
@@ -48,12 +50,12 @@ export class GeminiService {
    * * @param texts Array of strings to embed
    * @returns Array of embedding arrays
    */
-  async batchEmbedTexts(texts: string[]): Promise<number[][]> {
+  async embedBatch(texts: string[]): Promise<number[][]> {
     try {
       // The API supports up to 100 requests per batch
       // We process them all in one network call
       const requests = texts.map((t) => ({
-        content: { parts: [{ text: t }] },
+        content: { parts: [{ text: t }], role: "USER" },
         taskType: TaskType.RETRIEVAL_DOCUMENT,
       }));
 

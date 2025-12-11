@@ -5,18 +5,18 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { GeminiService } from "../src/services/gemini.service";
-import { VectorRepository } from "../src/repositories/vector.repository";
-import { Metadata } from "../src/models/types";
+import { GeminiService } from "../services/gemini.service";
+import { Metadata } from "../models/types";
+import { VectorRepository } from "../repositories/vector.repository";
 
 // Paths to your JSON data files
-const QURAN_PATH = path.join(__dirname, "../data/quran.json"); 
-const HADITH_PATH = path.join(__dirname, "../data/hadith.json");
+const QURAN_PATH = path.join(__dirname, "../../data/quran.json");
+const HADITH_PATH = path.join(__dirname, "../../data/hadith.json");
 
 // Batch size for Gemini API (Max is 100)
 const BATCH_SIZE = 100;
 // Delay between batches to be safe with rate limits (in ms)
-const DELAY_MS = 2000; 
+const DELAY_MS = 2000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -24,9 +24,9 @@ async function main() {
   console.log("🚀 Starting Gemini Index Build...");
 
   const geminiService = new GeminiService();
-  
+
   // Initialize Repository with Dimension 768 (Gemini)
-  const vectorRepo = new VectorRepository(768); 
+  const vectorRepo = new VectorRepository(768);
 
   // 1. Load Data
   console.log("📂 Loading JSON files...");
@@ -39,18 +39,18 @@ async function main() {
   const allDocuments: { text: string; meta: Metadata }[] = [
     ...quranData.map((item: any) => ({
       text: `${item.surahName} (${item.surahNumber}:${item.ayahNumber}): ${item.englishText}`,
-      meta: { 
-        source: `Quran ${item.surahNumber}:${item.ayahNumber}`, 
+      meta: {
+        source: `Quran ${item.surahNumber}:${item.ayahNumber}`,
         text: item.englishText,
-        type: 'quran'
+        type: "quran",
       },
     })),
     ...hadithData.map((item: any) => ({
       text: `Hadith (${item.book}): ${item.text}`,
-      meta: { 
-        source: `Hadith ${item.book} #${item.number}`, 
+      meta: {
+        source: `Hadith ${item.book} #${item.number}`,
         text: item.text,
-        type: 'hadith'
+        type: "hadith",
       },
     })),
   ];
@@ -76,7 +76,7 @@ async function main() {
 
     try {
       // Get embeddings for the whole batch in ONE call
-      const embeddings = await geminiService.batchEmbedTexts(batchTexts);
+      const embeddings = await geminiService.embedBatch(batchTexts);
 
       // Add to vector index
       embeddings.forEach((embedding, index) => {
@@ -85,15 +85,14 @@ async function main() {
       });
 
       processedCount += batch.length;
-      
+
       // Respect Rate Limits
-      await sleep(DELAY_MS); 
-      
+      await sleep(DELAY_MS);
     } catch (error) {
       console.error(`❌ Error in batch starting at index ${i}:`, error);
       // Optional: Add logic here to save progress or retry
       // For now, we break to avoid corrupted indices
-      process.exit(1); 
+      process.exit(1);
     }
   }
 

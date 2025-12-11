@@ -8,7 +8,7 @@ import { Metadata } from "../models/types";
 import * as os from "os";
 
 // Default dimension (Gemini's embedding-001/004 model)
-const DEFAULT_DIMENSION = 768; 
+const DEFAULT_DIMENSION = 768;
 const INDEX_COLLECTION = "vector_index";
 const INDEX_ID = "singleton_islamic_index";
 const GRIDFS_BUCKET_NAME = "vector_index_files";
@@ -33,17 +33,15 @@ export class VectorRepository {
     this.dimension = dimension || DEFAULT_DIMENSION;
     this.index = new HierarchicalNSW("cosine", this.dimension);
 
-    // NAMING LOGIC:
-    // If we are using the Gemini dimension (768), we append a suffix to keep it separate.
-    // If we are using Local (e.g., 1024) or any other, we use the raw INDEX_ID 
-    // to preserve backward compatibility with your existing local build.
     if (this.dimension === 768) {
-        this.indexId = `${INDEX_ID}_gemini`;
-        this.gridFilename = `islamic_index_gemini.bin`;
+      this.indexId = `${INDEX_ID}_gemini`;
+      this.gridFilename = `islamic_index_gemini.bin`;
+    } else if (this.dimension === 1024) {
+      this.indexId = INDEX_ID;
+      this.gridFilename = `islamic_index.bin`;
     } else {
-        // Keeps the original name for your local build
-        this.indexId = INDEX_ID;
-        this.gridFilename = `islamic_index.bin`;
+      this.indexId = `${INDEX_ID}_huggingface`;
+      this.gridFilename = `islamic_index_huggingface.bin`;
     }
 
     console.log(
@@ -60,7 +58,7 @@ export class VectorRepository {
     const db = await connectToDatabase();
     const collection = db.collection<IndexDocument>(INDEX_COLLECTION);
     const bucket = new GridFSBucket(db, { bucketName: GRIDFS_BUCKET_NAME });
-    
+
     // Use the specific filename for the temp path to avoid collisions between local/gemini builds
     const tmpPath = path.join(os.tmpdir(), this.gridFilename);
 
@@ -75,7 +73,7 @@ export class VectorRepository {
       metadata: {
         dimension: this.dimension,
         updatedAt: new Date(),
-        type: this.dimension === 768 ? 'gemini' : 'local'
+        type: this.dimension === 768 ? "gemini" : "local",
       },
     });
 
@@ -139,7 +137,7 @@ export class VectorRepository {
       const db = await connectToDatabase();
       const collection = db.collection<IndexDocument>(INDEX_COLLECTION);
       const bucket = new GridFSBucket(db, { bucketName: GRIDFS_BUCKET_NAME });
-      
+
       // Use the specific filename for the temp path
       const tmpPath = path.join(os.tmpdir(), this.gridFilename);
 
@@ -228,4 +226,4 @@ export class VectorRepository {
   getCurrentCount(): number {
     return this.index.getCurrentCount();
   }
-                  }
+}

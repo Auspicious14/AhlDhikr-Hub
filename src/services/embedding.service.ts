@@ -87,7 +87,10 @@ export class EmbeddingService {
   // }
 
   async embedQuery(query: string): Promise<number[]> {
-    if (this.service instanceof LocalEmbeddingService) {
+    if (
+      this.service instanceof LocalEmbeddingService ||
+      this.service instanceof GeminiService
+    ) {
       return await this.service.embedQuery(query);
     }
     return await this.service.embedContent(query);
@@ -118,7 +121,10 @@ export class EmbeddingService {
    * Batch process multiple texts
    */
   async embedBatch(texts: string[]): Promise<number[][]> {
-    if (this.service instanceof LocalEmbeddingService) {
+    if (
+      this.service instanceof LocalEmbeddingService ||
+      this.service instanceof GeminiService
+    ) {
       return await this.service.embedBatch(texts);
     }
 
