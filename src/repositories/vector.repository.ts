@@ -32,6 +32,7 @@ export class VectorRepository {
   constructor(dimension?: number) {
     this.dimension = dimension || DEFAULT_DIMENSION;
     this.index = new HierarchicalNSW("cosine", this.dimension);
+    // this.index.setEf(100);
     console.log(
       `📐 Vector repository initialized with dimension: ${this.dimension}`
     );
@@ -191,8 +192,12 @@ export class VectorRepository {
     this.index.addPoint(embedding, id);
   }
 
+  // vector.repository.ts
   search(embedding: number[], k: number): number[] {
     try {
+      // Keep high ef for good recall
+      this.index.setEf(Math.max(k * 20, 100));
+
       const { neighbors } = this.index.searchKnn(embedding, k);
       return neighbors;
     } catch (e) {

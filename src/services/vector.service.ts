@@ -44,10 +44,9 @@ export class VectorService {
       const quranVerses = await this.dataRepository.getQuranVerses();
       const hadiths = await this.dataRepository.getHadith();
 
-      // Get max documents limit from environment (default to 1000 to avoid quota issues)
       const maxDocuments = process.env.MAX_DOCUMENTS_TO_INDEX
         ? parseInt(process.env.MAX_DOCUMENTS_TO_INDEX, 10)
-        : 1000;
+        : Infinity; // Index all documents by default
 
       // Get delay between requests (default to 100ms to respect rate limits)
       const delayMs = process.env.EMBEDDING_DELAY_MS
@@ -115,10 +114,12 @@ export class VectorService {
           // Reset if starting from scratch or invalid state
           console.log("Starting fresh index build...");
           metadata = [];
+          // Initialize index (hnswlib-node uses default M=16, efConstruction=200)
           this.vectorRepository.initIndex(documents.length);
         }
       } else {
         metadata = [];
+        // Initialize index (hnswlib-node uses default M=16, efConstruction=200)
         this.vectorRepository.initIndex(documents.length);
       }
 
@@ -252,21 +253,20 @@ export class VectorService {
     }
   }
 
+  /**
+   * Search for relevant documents using embedQuery for proper query encoding.
+   */
   async search(query: string, k: number = 5): Promise<Metadata[]> {
     if (!isIndexLoaded) {
-      throw new Error(
-        "Index is not loaded. Please ensure the server is initialized correctly."
-      );
+      throw new Error("Index is not loaded.");
     }
 
     if (metadata.length === 0) {
-      console.warn(
-        "Search performed on an empty index. No results will be returned."
-      );
       return [];
     }
 
-    const queryEmbedding = await this.embeddingService.embedContent(query);
+    // Use embedQuery instead of embedContent for proper query encoding
+    const queryEmbedding = await this.embeddingService.embedQuery(query);
     const normalizedQueryEmbedding = normalizeVector(queryEmbedding);
     const neighborIds = this.vectorRepository.search(
       normalizedQueryEmbedding,

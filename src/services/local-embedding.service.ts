@@ -10,6 +10,13 @@ export class LocalEmbeddingService {
     this.modelName = modelName;
   }
 
+  private cleanText(text: string): string {
+    return text
+      .trim()
+      .replace(/\s+/g, " ")
+      .replace(/[\r\n]+/g, " ");
+  }
+
   /**
    * Initialize the embedding model (downloads on first run)
    */
@@ -64,6 +71,7 @@ export class LocalEmbeddingService {
 
     try {
       // Generate embeddings
+      text = this.cleanText(text);
       const output = await this.extractor(text, {
         pooling: "mean",
         normalize: true,
@@ -75,6 +83,29 @@ export class LocalEmbeddingService {
       return embedding;
     } catch (error: any) {
       throw new Error(`Local embedding error: ${error.message}`);
+    }
+  }
+
+  async embedQuery(query: string): Promise<number[]> {
+    if (!this.extractor) {
+      await this.initialize();
+    }
+
+    console.log("Using embedQuery method");
+
+    try {
+      query = this.cleanText(query);
+      const instructedQuery = `Represent this sentence for searching relevant passages: ${query}`;
+      const output = await this.extractor(instructedQuery, {
+        pooling: "mean",
+        normalize: true,
+      });
+
+      const embedding: number[] = Array.from(output.data) as number[];
+
+      return embedding;
+    } catch (error: any) {
+      throw new Error(`Local query embedding error: ${error.message}`);
     }
   }
 

@@ -1,12 +1,16 @@
-import { MongoClient, Db } from 'mongodb';
-import mongoose from 'mongoose';
+import { MongoClient, Db } from "mongodb";
+import mongoose from "mongoose";
+import dotenv from "dotenv";
 
+dotenv.config();
 const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
   // We allow this to be empty during build steps, where the DB is not needed.
   // The services that actually use the DB will throw the error at runtime.
-  console.warn('MONGODB_URI is not set. Database services will not be available.');
+  console.warn(
+    "MONGODB_URI is not set. Database services will not be available."
+  );
 }
 
 let db: Db;
@@ -23,13 +27,12 @@ export const connectToDatabase = async (): Promise<Db> => {
   }
 
   if (!MONGODB_URI) {
-    throw new Error('MONGODB_URI is not set. Cannot connect to the database.');
+    throw new Error("MONGODB_URI is not set. Cannot connect to the database.");
   }
 
-  // Connect mongoose
   if (mongoose.connection.readyState === 0) {
     await mongoose.connect(MONGODB_URI);
-    console.log('Successfully connected to MongoDB with Mongoose.');
+    console.log("Successfully connected to MongoDB with Mongoose.");
   }
 
   client = new MongoClient(MONGODB_URI);
@@ -37,7 +40,7 @@ export const connectToDatabase = async (): Promise<Db> => {
   // Using the default database specified in the connection string.
   // You can override this by passing a database name to client.db().
   db = client.db();
-  console.log('Successfully connected to MongoDB.');
+  console.log("Successfully connected to MongoDB.");
   return db;
 };
 
@@ -48,7 +51,7 @@ export const connectToDatabase = async (): Promise<Db> => {
  */
 export const getDb = (): Db => {
   if (!db) {
-    throw new Error('Database not initialized. Call connectToDatabase first.');
+    throw new Error("Database not initialized. Call connectToDatabase first.");
   }
   return db;
 };
@@ -57,12 +60,12 @@ export const getDb = (): Db => {
  * Closes the MongoDB connection.
  */
 export const closeDatabaseConnection = async () => {
-    if (mongoose.connection.readyState !== 0) {
+  if (mongoose.connection.readyState !== 0) {
     await mongoose.disconnect();
-    console.log('Mongoose connection closed.');
+    console.log("Mongoose connection closed.");
   }
   if (client) {
     await client.close();
-    console.log('MongoDB connection closed.');
+    console.log("MongoDB connection closed.");
   }
 };

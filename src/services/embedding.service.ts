@@ -82,8 +82,15 @@ export class EmbeddingService {
   /**
    * Generate embeddings for a given text
    */
-  async embedContent(text: string): Promise<number[]> {
-    return await this.service.embedContent(text);
+  // async embedContent(text: string): Promise<number[]> {
+  //   return await this.service.embedContent(text);
+  // }
+
+  async embedQuery(query: string): Promise<number[]> {
+    if (this.service instanceof LocalEmbeddingService) {
+      return await this.service.embedQuery(query);
+    }
+    return await this.service.embedContent(query);
   }
 
   /**
