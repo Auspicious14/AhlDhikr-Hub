@@ -1,4 +1,8 @@
-import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
+import { 
+  GoogleGenerativeAI, 
+  GenerativeModel, 
+  TaskType 
+} from "@google/generative-ai";
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -10,91 +14,85 @@ export class GeminiService {
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error(
-        "GEMINI_API_KEY is not set in the environment variables."
-      );
+      throw new Error("GEMINI_API_KEY is not set in environment variables.");
     }
     const genAI = new GoogleGenerativeAI(apiKey);
+    
+    // Model for Embeddings (768 dimensions)
     this.embeddingModel = genAI.getGenerativeModel({ model: "embedding-001" });
-    // Use gemini-2.5-flash-lite for fast responses
-    this.generativeModel = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash-lite",
-    });
+    
+    // Model for RAG generation (Fast & Cheap)
+    this.generativeModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
   }
 
-  async embedContent(text: string): Promise<number[]> {
-    const result = await this.embeddingModel.embedContent(text);
-    return result.embedding.values;
-  }
-
+  /**
+   * Embeds a single query (User Question)
+   * Optimized for Vercel Runtime
+   */
   async embedQuery(text: string): Promise<number[]> {
-    // Gemini embedding-001 handles both content and query similarly
-    const result = await this.embeddingModel.embedContent(text);
-    return result.embedding.values;
-  }
-
-  getEmbeddingDimension(): number {
-    return 768; // embedding-001
-  }
-
-  async generateAnswer(question: string, context: string[]): Promise<string> {
-    const systemPrompt = `You are an Islamic scholar AI. Your purpose is to answer questions about Islam, but only using the provided sources.
-- Cite your sources verbatim using the format [Source: ...].
-- If the provided texts do not contain the answer, you must state 'I don't have enough information in the sources to answer this question.'.
-- On the first use of an Arabic term, provide the English translation, for example: 'Sahih (Authentic)'.
-- Do not use any information you were not given.`;
-
-    const prompt = [
-      systemPrompt,
-      "Here are the sources:",
-      ...context.map((c, i) => `Source ${i + 1}: ${c}`),
-      `\nQuestion: ${question}`,
-    ].join("\n\n");
-
     try {
-      const result = await this.generativeModel.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
+      const result = await this.embeddingModel.embedContent({
+        content: { parts: [{ text }] },
+        taskType: TaskType.RETRIEVAL_QUERY,
+      });
+      return result.embedding.values;
     } catch (error) {
-      console.error("Error generating answer from Gemini:", error);
-      throw new Error("Failed to generate answer.");
+      console.error("Gemini Embedding Error:", error);
+      throw error;
     }
   }
 
   /**
-   * Generate answer with streaming support
-   * Yields chunks of text as they arrive from Gemini
+   * Embeds a list of documents in BATCHES.
+   * CRITICAL: Using batchEmbedContents reduces API calls by 100x.
+   * * @param texts Array of strings to embed
+   * @returns Array of embedding arrays
    */
-  async *generateAnswerStream(
-    question: string,
-    context: string[]
-  ): AsyncGenerator<string> {
-    const systemPrompt = `You are an Islamic scholar AI. Your purpose is to answer questions about Islam, but only using the provided sources.
-- Cite your sources verbatim using the format [Source: ...].
-- If the provided texts do not contain the answer, you must state 'I don't know'.
-- On the first use of an Arabic term, provide the English translation, for example: 'Sahih (Authentic)'.
-- Do not use any information you were not given.`;
+  async batchEmbedTexts(texts: string[]): Promise<number[][]> {
+    try {
+      // The API supports up to 100 requests per batch
+      // We process them all in one network call
+      const requests = texts.map((t) => ({
+        content: { parts: [{ text: t }] },
+        taskType: TaskType.RETRIEVAL_DOCUMENT,
+      }));
+
+      const result = await this.embeddingModel.batchEmbedContents({
+        requests: requests,
+      });
+
+      if (!result.embeddings) return [];
+      return result.embeddings.map((e) => e.values);
+    } catch (error) {
+      console.error("Batch Embedding Error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generates the answer using the retrieved context
+   */
+  async generateAnswer(question: string, context: string[]): Promise<string> {
+    const systemPrompt = `You are an Islamic scholar AI. Answer strictly using the provided sources.
+- Cite sources format: [Source: ...].
+- If unsure based on sources, say 'I don't have enough information in the sources'.
+- Translate Arabic terms on first use.
+- Be respectful and precise.`;
 
     const prompt = [
       systemPrompt,
-      "Here are the sources:",
+      "--- SOURCES START ---",
       ...context.map((c, i) => `Source ${i + 1}: ${c}`),
-      `\nQuestion: ${question}`,
+      "--- SOURCES END ---",
+      `Question: ${question}`,
     ].join("\n\n");
 
     try {
-      const result = await this.generativeModel.generateContentStream(prompt);
-
-      // Stream the response chunks
-      for await (const chunk of result.stream) {
-        const chunkText = chunk.text();
-        if (chunkText) {
-          yield chunkText;
-        }
-      }
+      const result = await this.generativeModel.generateContent(prompt);
+      return result.response.text();
     } catch (error) {
-      console.error("Error streaming answer from Gemini:", error);
-      throw new Error("Failed to stream answer.");
+      console.error("Gemini Generation Error:", error);
+      throw new Error("Failed to generate answer.");
     }
   }
 }
