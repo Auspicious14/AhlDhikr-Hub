@@ -7,28 +7,20 @@ dotenv.config();
 
 export type EmbeddingProvider = "gemini" | "huggingface" | "local";
 
-/**
- * Unified embedding service that supports multiple providers
- */
 export class EmbeddingService {
   private provider: EmbeddingProvider;
   private service: GeminiService | HuggingFaceService | LocalEmbeddingService;
 
   constructor(provider?: EmbeddingProvider) {
-    // Auto-detect provider from environment or use specified one
     this.provider = provider || this.detectProvider();
     this.service = this.createService();
 
     console.log(`🔧 Using embedding provider: ${this.provider.toUpperCase()}`);
   }
 
-  /**
-   * Auto-detect which provider to use based on available API keys
-   */
   private detectProvider(): EmbeddingProvider {
     const envProvider = process.env.EMBEDDING_PROVIDER?.toLowerCase();
 
-    // If explicitly set in environment, use that
     if (
       envProvider === "gemini" ||
       envProvider === "huggingface" ||
@@ -37,7 +29,6 @@ export class EmbeddingService {
       return envProvider;
     }
 
-    // Auto-detect based on available API keys
     if (process.env.HUGGINGFACE_API_KEY) {
       return "huggingface";
     }
@@ -46,13 +37,9 @@ export class EmbeddingService {
       return "gemini";
     }
 
-    // Default to local (always works, no API key needed)
     return "local";
   }
 
-  /**
-   * Create the appropriate service instance
-   */
   private createService():
     | GeminiService
     | HuggingFaceService
@@ -70,42 +57,33 @@ export class EmbeddingService {
     }
   }
 
-  /**
-   * Initialize the service (required for local embeddings)
-   */
   async initialize(): Promise<void> {
     if (this.service instanceof LocalEmbeddingService) {
       await this.service.initialize();
     }
   }
 
-  /**
-   * Generate embeddings for a given text
-   */
-  // async embedContent(text: string): Promise<number[]> {
-  //   return await this.service.embedContent(text);
-  // }
+  async embedContent(text: string): Promise<number[]> {
+    return await this.service.embedContent(text);
+  }
 
+  
   async embedQuery(query: string): Promise<number[]> {
+    
     if (
       this.service instanceof LocalEmbeddingService ||
-      this.service instanceof GeminiService
+      this.service instanceof HuggingFaceService
     ) {
       return await this.service.embedQuery(query);
     }
+    
     return await this.service.embedContent(query);
   }
 
-  /**
-   * Get the current provider name
-   */
   getProvider(): string {
     return this.provider;
   }
 
-  /**
-   * Get embedding dimension for the current provider
-   */
   getEmbeddingDimension(): number {
     if (
       this.service instanceof HuggingFaceService ||
@@ -113,26 +91,27 @@ export class EmbeddingService {
     ) {
       return this.service.getEmbeddingDimension();
     }
-    // Gemini uses 768 dimensions
+  
     return 768;
   }
 
-  /**
-   * Batch process multiple texts
-   */
   async embedBatch(texts: string[]): Promise<number[][]> {
-    if (
-      this.service instanceof LocalEmbeddingService ||
-      this.service instanceof GeminiService
-    ) {
+    if (this.service instanceof LocalEmbeddingService) {
       return await this.service.embedBatch(texts);
     }
 
-    // Fallback for other services: sequential processing
     const embeddings: number[][] = [];
-    for (const text of texts) {
-      embeddings.push(await this.service.embedContent(text));
+    for (let i = 0; i < texts.length; i++) {
+      embeddings.push(await this.service.embedContent(texts[i]));
+      
+      if (i < texts.length - 1) {
+        await this.delay(100);
+      }
     }
     return embeddings;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
