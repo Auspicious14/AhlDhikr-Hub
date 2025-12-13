@@ -7,7 +7,6 @@ import { connectToDatabase, closeDatabaseConnection } from "./mongo.service";
 let isIndexLoaded = false;
 let metadata: Metadata[] = [];
 
-// Helper to normalize vectors for cosine similarity
 const normalizeVector = (v: number[]): number[] => {
   const magnitude = Math.sqrt(v.reduce((acc, val) => acc + val * val, 0));
   if (magnitude === 0) return v;
@@ -19,7 +18,7 @@ export class VectorService {
   private vectorRepository: VectorRepository;
   private embeddingService: EmbeddingService;
   private readonly BATCH_SIZE = 50;
-  private readonly CHECKPOINT_INTERVAL = 500; // Save every 500 documents
+  private readonly CHECKPOINT_INTERVAL = 500;
 
   constructor(
     dataRepository: DataRepository,
@@ -35,10 +34,8 @@ export class VectorService {
     console.log("Building vector index...");
 
     try {
-      // Ensure the database is connected before trying to build
       await connectToDatabase();
 
-      // Initialize embedding service (required for local embeddings)
       await this.embeddingService.initialize();
 
       const quranVerses = await this.dataRepository.getQuranVerses();
@@ -46,14 +43,12 @@ export class VectorService {
 
       const maxDocuments = process.env.MAX_DOCUMENTS_TO_INDEX
         ? parseInt(process.env.MAX_DOCUMENTS_TO_INDEX, 10)
-        : Infinity; // Index all documents by default
+        : Infinity;
 
-      // Get delay between requests (default to 100ms to respect rate limits)
       const delayMs = process.env.EMBEDDING_DELAY_MS
         ? parseInt(process.env.EMBEDDING_DELAY_MS, 10)
         : 100;
 
-      // Sample documents intelligently - take proportional samples from both sources
       const totalAvailable = quranVerses.length + hadiths.length;
       const quranSampleSize = Math.min(
         quranVerses.length,
@@ -64,7 +59,6 @@ export class VectorService {
         maxDocuments - quranSampleSize
       );
 
-      // Sample evenly distributed documents
       const sampledQuran = this.sampleDocuments(quranVerses, quranSampleSize);
       const sampledHadith = this.sampleDocuments(hadiths, hadithSampleSize);
 
@@ -90,13 +84,11 @@ export class VectorService {
       console.log(`   Processing: ${documents.length} documents`);
       console.log(`   Batch Size: ${this.BATCH_SIZE}`);
 
-      // Check for existing index to resume
       let startIndex = 0;
       const existingIndex = await this.vectorRepository.loadIndex();
 
       if (existingIndex) {
         const currentCount = this.vectorRepository.getCurrentCount();
-        // If the existing index matches our target size or is partially built
         if (currentCount > 0 && currentCount < documents.length) {
           console.log(
             `🔄 Resuming from checkpoint: ${currentCount}/${documents.length} documents already indexed.`
@@ -111,15 +103,12 @@ export class VectorService {
           isIndexLoaded = true;
           return;
         } else {
-          // Reset if starting from scratch or invalid state
           console.log("Starting fresh index build...");
           metadata = [];
-          // Initialize index (hnswlib-node uses default M=16, efConstruction=200)
           this.vectorRepository.initIndex(documents.length);
         }
       } else {
         metadata = [];
-        // Initialize index (hnswlib-node uses default M=16, efConstruction=200)
         this.vectorRepository.initIndex(documents.length);
       }
 
@@ -129,18 +118,15 @@ export class VectorService {
         } remaining documents...`
       );
 
-      // Process in batches
       for (let i = startIndex; i < documents.length; i += this.BATCH_SIZE) {
         const batch = documents.slice(i, i + this.BATCH_SIZE);
         const batchTexts = batch.map((d) => d.text);
 
-        // Add delay to respect rate limits (except for first request)
         if (i > 0 && delayMs > 0) {
           await this.delay(delayMs);
         }
 
         try {
-          // Use batch embedding if available
           const embeddings = await this.embeddingService.embedBatch(batchTexts);
 
           for (let j = 0; j < embeddings.length; j++) {
@@ -148,7 +134,6 @@ export class VectorService {
             const normalizedEmbedding = normalizeVector(embeddings[j]);
             this.vectorRepository.addPoint(normalizedEmbedding, globalIndex);
 
-            // Ensure metadata array is filled at the correct index
             if (metadata.length <= globalIndex) {
               metadata.push({
                 id: globalIndex,
@@ -171,7 +156,6 @@ export class VectorService {
             } documents (${Math.round((progress / documents.length) * 100)}%)`
           );
 
-          // Checkpoint: Save periodically
           if (
             progress % this.CHECKPOINT_INTERVAL === 0 ||
             progress === documents.length
@@ -184,7 +168,6 @@ export class VectorService {
             `❌ Error processing batch starting at index ${i}:`,
             batchError
           );
-          // Save what we have so far before exiting/throwing
           console.log("💾 Saving progress before exit...");
           await this.vectorRepository.saveIndex(metadata);
           throw batchError;
@@ -211,10 +194,8 @@ export class VectorService {
           );
         }
       }
-      // Don't reset metadata here, we want to keep what we have if possible
     }
 
-    // Final save to ensure everything is persisted
     await this.vectorRepository.saveIndex(metadata);
     isIndexLoaded = true;
     console.log(`Index built and saved with ${metadata.length} documents.`);
@@ -226,7 +207,6 @@ export class VectorService {
       return;
     }
 
-    // Connect to the database before attempting to load the index
     await connectToDatabase();
 
     const loaded = await this.vectorRepository.loadIndex();
@@ -237,7 +217,6 @@ export class VectorService {
         `Successfully loaded index with ${metadata.length} documents from MongoDB.`
       );
     } else {
-      // If no index is found in the database, initialize an empty one.
       console.warn(
         "WARNING: No index found in the database. Initializing an empty index."
       );
@@ -253,9 +232,6 @@ export class VectorService {
     }
   }
 
-  /**
-   * Search for relevant documents using embedQuery for proper query encoding.
-   */
   async search(query: string, k: number = 5): Promise<Metadata[]> {
     if (!isIndexLoaded) {
       throw new Error("Index is not loaded.");
@@ -265,7 +241,6 @@ export class VectorService {
       return [];
     }
 
-    // Use embedQuery instead of embedContent for proper query encoding
     const queryEmbedding = await this.embeddingService.embedQuery(query);
     const normalizedQueryEmbedding = normalizeVector(queryEmbedding);
     const neighborIds = this.vectorRepository.search(
@@ -276,7 +251,6 @@ export class VectorService {
     return neighborIds.map((id) => metadata[id]).filter(Boolean);
   }
 
-  // Helper method to sample documents evenly
   private sampleDocuments<T>(documents: T[], sampleSize: number): T[] {
     if (sampleSize >= documents.length) {
       return documents;
@@ -293,19 +267,16 @@ export class VectorService {
     return sampled;
   }
 
-  // Helper method to add delay between requests
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
-// Support direct execution for building the index via CLI
 if (require.main === module) {
   if (process.argv[2] === "build") {
     const dataRepo = new DataRepository();
     const embeddingService = new EmbeddingService();
 
-    // Get the embedding dimension from the service
     const dimension = embeddingService.getEmbeddingDimension();
     const vectorRepo = new VectorRepository(dimension);
 
@@ -319,7 +290,6 @@ if (require.main === module) {
       .buildIndex()
       .then(() => {
         console.log("Index build process finished.");
-        // Close the database connection gracefully after the script runs
         return closeDatabaseConnection();
       })
       .catch((error) => {

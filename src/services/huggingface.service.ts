@@ -1,4 +1,4 @@
-import { HfInference } from "@huggingface/inference";
+import { FeatureExtractionOutput, HfInference } from "@huggingface/inference";
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -72,7 +72,7 @@ export class HuggingFaceService {
     try {
       // Add instruction prefix for BGE models (critical for accuracy!)
       const instructedQuery = `Represent this sentence for searching relevant passages: ${query}`;
-      
+
       const result = await this.hf.featureExtraction({
         model: this.model,
         inputs: instructedQuery,
@@ -105,13 +105,16 @@ export class HuggingFaceService {
    */
   private async handleError(error: any): Promise<never> {
     // Handle specific error cases
-    if (error.message?.includes("401") || error.message?.includes("Invalid token")) {
+    if (
+      error.message?.includes("401") ||
+      error.message?.includes("Invalid token")
+    ) {
       throw new Error(
         "Invalid Hugging Face API key. Please check your HUGGINGFACE_API_KEY in .env file.\n" +
           "Get a free key at: https://huggingface.co/settings/tokens"
       );
-    } 
-    
+    }
+
     if (error.message?.includes("404")) {
       throw new Error(
         `Model '${this.model}' not found. Please check HUGGINGFACE_MODEL in .env file.\n` +
@@ -121,50 +124,57 @@ export class HuggingFaceService {
           "  - sentence-transformers/all-MiniLM-L6-v2 (384 dim, fast)\n" +
           "  - sentence-transformers/all-mpnet-base-v2 (768 dim, better quality)"
       );
-    } 
-    
-    if (error.message?.includes("503") || error.message?.includes("loading") || error.message?.includes("currently loading")) {
+    }
+
+    if (
+      error.message?.includes("503") ||
+      error.message?.includes("loading") ||
+      error.message?.includes("currently loading")
+    ) {
       // Model is loading - retry with exponential backoff
       console.log("⏳ Model is loading, waiting and retrying...");
-      
+
       let retries = 3;
       let delay = 10000; // Start with 10 seconds
-      
+
       for (let i = 0; i < retries; i++) {
-        console.log(`   Retry ${i + 1}/${retries} after ${delay/1000}s...`);
+        console.log(`   Retry ${i + 1}/${retries} after ${delay / 1000}s...`);
         await this.delay(delay);
-        
+
         try {
           // Retry the original request
           const result = await this.hf.featureExtraction({
             model: this.model,
             inputs: error.originalInput || "",
           });
-          
-          let embedding: number[];
+
+          let embedding: FeatureExtractionOutput;
           if (Array.isArray(result)) {
             embedding = Array.isArray(result[0]) ? result[0] : result;
           } else {
             throw new Error("Unexpected format");
           }
-          
+
           return embedding as never;
         } catch (retryError) {
           if (i === retries - 1) {
             // Last retry failed
             throw new Error(
               "Model is still loading after multiple retries.\n" +
-              "This can happen with large models on first use.\n" +
-              "Please try again in a few minutes or use a smaller model:\n" +
-              "  HUGGINGFACE_MODEL=BAAI/bge-small-en-v1.5"
+                "This can happen with large models on first use.\n" +
+                "Please try again in a few minutes or use a smaller model:\n" +
+                "  HUGGINGFACE_MODEL=BAAI/bge-small-en-v1.5"
             );
           }
           delay *= 2; // Exponential backoff
         }
       }
-    } 
-    
-    if (error.message?.includes("429") || error.message?.includes("rate limit")) {
+    }
+
+    if (
+      error.message?.includes("429") ||
+      error.message?.includes("rate limit")
+    ) {
       throw new Error(
         "Rate limit exceeded. Please wait a moment and try again.\n" +
           "Free tier: 1,000 requests/day\n" +
@@ -194,11 +204,11 @@ export class HuggingFaceService {
       "BAAI/bge-large-en-v1.5": 1024,
       "BAAI/bge-base-en-v1.5": 768,
       "BAAI/bge-small-en-v1.5": 384,
-      
+
       // Sentence transformers
       "sentence-transformers/all-MiniLM-L6-v2": 384,
       "sentence-transformers/all-mpnet-base-v2": 768,
-      
+
       // Multilingual E5
       "intfloat/multilingual-e5-large": 1024,
       "intfloat/multilingual-e5-base": 768,
@@ -214,4 +224,4 @@ export class HuggingFaceService {
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
-        }
+}

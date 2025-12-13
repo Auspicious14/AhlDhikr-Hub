@@ -18,19 +18,13 @@ export class GeminiService {
     }
     const genAI = new GoogleGenerativeAI(apiKey);
 
-    // Model for Embeddings (768 dimensions)
     this.embeddingModel = genAI.getGenerativeModel({ model: "embedding-001" });
 
-    // Model for RAG generation (Fast & Cheap)
     this.generativeModel = genAI.getGenerativeModel({
       model: "gemini-2.5-flash-lite",
     });
   }
 
-  /**
-   * Embeds a single query (User Question)
-   * Optimized for Vercel Runtime
-   */
   async embedQuery(text: string): Promise<number[]> {
     try {
       const result = await this.embeddingModel.embedContent({
@@ -44,16 +38,8 @@ export class GeminiService {
     }
   }
 
-  /**
-   * Embeds a list of documents in BATCHES.
-   * CRITICAL: Using batchEmbedContents reduces API calls by 100x.
-   * * @param texts Array of strings to embed
-   * @returns Array of embedding arrays
-   */
   async embedBatch(texts: string[]): Promise<number[][]> {
     try {
-      // The API supports up to 100 requests per batch
-      // We process them all in one network call
       const requests = texts.map((t) => ({
         content: { parts: [{ text: t }], role: "USER" },
         taskType: TaskType.RETRIEVAL_DOCUMENT,
@@ -71,30 +57,59 @@ export class GeminiService {
     }
   }
 
-  /**
-   * Generates the answer using the retrieved context
-   */
   async generateAnswer(question: string, context: string[]): Promise<string> {
-    const systemPrompt = `You are an Islamic scholar AI. Answer strictly using the provided sources.
-- Cite sources format: [Source: ...].
-- If unsure based on sources, say 'I don't have enough information in the sources'.
-- Translate Arabic terms on first use.
-- Be respectful and precise.`;
+    const systemPrompt = `You are an Islamic scholar AI. Your purpose is to answer questions about Islam, but only using the provided sources.
+- Cite your sources verbatim using the format [Source: ...].
+- If the provided texts do not contain the answer, you must state 'I don't have enough information in the sources to answer this question.'.
+- On the first use of an Arabic term, provide the English translation, for example: 'Sahih (Authentic)'.
+- Do not use any information you were not given.`;
 
     const prompt = [
       systemPrompt,
-      "--- SOURCES START ---",
+      "Here are the sources:",
       ...context.map((c, i) => `Source ${i + 1}: ${c}`),
-      "--- SOURCES END ---",
-      `Question: ${question}`,
+      `\nQuestion: ${question}`,
     ].join("\n\n");
 
     try {
       const result = await this.generativeModel.generateContent(prompt);
-      return result.response.text();
+      const response = await result.response;
+      return response.text();
     } catch (error) {
-      console.error("Gemini Generation Error:", error);
+      console.error("Error generating answer from Gemini:", error);
       throw new Error("Failed to generate answer.");
+    }
+  }
+
+  async *generateAnswerStream(
+    question: string,
+    context: string[]
+  ): AsyncGenerator<string> {
+    const systemPrompt = `You are an Islamic scholar AI. Your purpose is to answer questions about Islam, but only using the provided sources.
+- Cite your sources verbatim using the format [Source: ...].
+- If the provided texts do not contain the answer, you must state 'I don't know'.
+- On the first use of an Arabic term, provide the English translation, for example: 'Sahih (Authentic)'.
+- Do not use any information you were not given.`;
+
+    const prompt = [
+      systemPrompt,
+      "Here are the sources:",
+      ...context.map((c, i) => `Source ${i + 1}: ${c}`),
+      `\nQuestion: ${question}`,
+    ].join("\n\n");
+
+    try {
+      const result = await this.generativeModel.generateContentStream(prompt);
+
+      for await (const chunk of result.stream) {
+        const chunkText = chunk.text();
+        if (chunkText) {
+          yield chunkText;
+        }
+      }
+    } catch (error) {
+      console.error("Error streaming answer from Gemini:", error);
+      throw new Error("Failed to stream answer.");
     }
   }
 }

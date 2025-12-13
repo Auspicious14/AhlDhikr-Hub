@@ -66,7 +66,7 @@ export class QaService {
     const slug = this._create_slug(question);
 
     console.log("Searching for relevant sources in the vector index...");
-    const context = await this.vectorService.search(question, 10);
+    const context = await this.vectorService.search(question, 3);
 
     if (context.length === 0) {
       const answerData = {

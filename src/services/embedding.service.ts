@@ -63,21 +63,19 @@ export class EmbeddingService {
     }
   }
 
-  async embedContent(text: string): Promise<number[]> {
-    return await this.service.embedContent(text);
-  }
+  // async embedContent(text: string): Promise<number[]> {
+  //   return await this.service.embedQuery(text);
+  // }
 
-  
   async embedQuery(query: string): Promise<number[]> {
-    
     if (
       this.service instanceof LocalEmbeddingService ||
       this.service instanceof HuggingFaceService
     ) {
       return await this.service.embedQuery(query);
     }
-    
-    return await this.service.embedContent(query);
+
+    return await this.service.embedQuery(query);
   }
 
   getProvider(): string {
@@ -91,7 +89,7 @@ export class EmbeddingService {
     ) {
       return this.service.getEmbeddingDimension();
     }
-  
+
     return 768;
   }
 
@@ -102,8 +100,8 @@ export class EmbeddingService {
 
     const embeddings: number[][] = [];
     for (let i = 0; i < texts.length; i++) {
-      embeddings.push(await this.service.embedContent(texts[i]));
-      
+      embeddings.push(await this.service.embedQuery(texts[i]));
+
       if (i < texts.length - 1) {
         await this.delay(100);
       }
