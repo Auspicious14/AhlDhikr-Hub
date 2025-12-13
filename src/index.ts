@@ -1,12 +1,12 @@
 import express from "express";
 import * as dotenv from "dotenv";
-import apiRouter, { getVectorService } from "./routes/api.routes";
+import mainRouter from "./routes/index";
+import { getVectorService } from "./routes/qa.routes";
 import cors from "cors";
 
 dotenv.config();
 
-// Check for required environment variables at startup
-const requiredEnvVars = ["GEMINI_API_KEY", "HADITH_API_KEY", "MONGODB_URI"];
+const requiredEnvVars = ["GEMINI_API_KEY", "HADITH_API_KEY", "MONGODB_URI", "JWT_SECRET"];
 let missingVars = false;
 const port = process.env.PORT || 2002;
 const nodeEnv = process.env.NODE_ENV;
@@ -37,11 +37,9 @@ app.use(
 );
 app.use(express.json());
 
-// Track initialization state
 let isReady = false;
 let initializationError: Error | null = null;
 
-// Singleton promise to ensure initialization runs only once
 let initializationPromise: Promise<void> | null = null;
 
 const initialize = async (): Promise<void> => {
@@ -50,10 +48,10 @@ const initialize = async (): Promise<void> => {
       try {
         console.log("🚀 Initializing server...");
         const vectorService = getVectorService();
-
+        
         console.log("📥 Loading vector index from MongoDB...");
         await vectorService.loadIndex();
-
+        
         isReady = true;
         console.log("✅ Vector index loaded successfully. Server is ready!");
       } catch (error) {
@@ -66,86 +64,76 @@ const initialize = async (): Promise<void> => {
   return initializationPromise;
 };
 
-// Start initialization immediately
 initialize().catch((error) => {
   console.error("💥 Critical initialization failure:", error);
-  // Don't exit - let health check report the error
 });
 
-// Health check endpoint - always accessible
 app.get("/", (req, res) => {
   if (isReady) {
-    res.status(200).json({
+    res.status(200).json({ 
       status: "ready",
-      message: "Backend is working and vector index is loaded",
+      message: "Backend is working and vector index is loaded" 
     });
   } else if (initializationError) {
-    res.status(503).json({
+    res.status(503).json({ 
       status: "error",
       message: "Failed to initialize",
-      error: initializationError.message,
+      error: initializationError.message
     });
   } else {
-    res.status(503).json({
+    res.status(503).json({ 
       status: "loading",
-      message: "Server is initializing, please wait...",
+      message: "Server is initializing, please wait..." 
     });
   }
 });
 
-// Health check endpoint (alternative)
 app.get("/health", (req, res) => {
   if (isReady) {
-    res.status(200).json({
+    res.status(200).json({ 
       status: "ready",
       uptime: process.uptime(),
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     });
   } else if (initializationError) {
-    res.status(503).json({
+    res.status(503).json({ 
       status: "error",
-      error: initializationError.message,
+      error: initializationError.message
     });
   } else {
-    res.status(503).json({
+    res.status(503).json({ 
       status: "initializing",
-      message: "Index is still loading...",
+      message: "Index is still loading..."
     });
   }
 });
 
-// API routes - wait for initialization
 app.use("/api", async (req, res, next) => {
-  // Check if ready
   if (isReady) {
-    return apiRouter(req, res, next);
+    return mainRouter(req, res, next);
   }
-
-  // Check if failed
+  
   if (initializationError) {
     return res.status(503).json({
       error: "Service Unavailable",
       message: "Server failed to initialize",
-      details: initializationError.message,
+      details: initializationError.message
     });
   }
-
-  // Still loading
+  
   try {
     await initializationPromise;
-    apiRouter(req, res, next);
+    mainRouter(req, res, next);
   } catch (error) {
     console.error("API request failed due to initialization error:", error);
     res.status(503).json({
       error: "Service Unavailable",
       message: "The server is not ready to handle requests.",
-      details: error instanceof Error ? error.message : String(error),
+      details: error instanceof Error ? error.message : String(error)
     });
   }
 });
 
-// Only start listening if not in serverless environment (Vercel)
-// Vercel handles the server lifecycle
 if (nodeEnv === "development" || !process.env.VERCEL) {
   app.listen(port, () => {
     console.log(`🌐 Server is listening on port ${port}`);
@@ -153,5 +141,4 @@ if (nodeEnv === "development" || !process.env.VERCEL) {
   });
 }
 
-// For Vercel serverless
 export default app;
