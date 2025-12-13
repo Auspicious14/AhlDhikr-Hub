@@ -4,7 +4,7 @@ import authRouter from "./auth.routes";
 
 const router = Router();
 
-router.use("/qa", qaRouter);
+router.use(qaRouter);
 router.use("/auth", authRouter);
 
 export default router;
