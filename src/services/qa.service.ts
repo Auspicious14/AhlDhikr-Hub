@@ -36,7 +36,7 @@ export class QaService {
   private _determine_category(context: Metadata[]): string {
     const sourceCounts: { [key: string]: number } = {};
     for (const item of context) {
-      const sourceName = item.source.split(" ")[0]; // "Quran" or "Hadith"
+      const sourceName = item.source.split(" ")[0]; // "Quran", "Hadith", or "Tafsir"
       sourceCounts[sourceName] = (sourceCounts[sourceName] || 0) + 1;
     }
     return Object.keys(sourceCounts).reduce(
@@ -47,11 +47,16 @@ export class QaService {
 
   private _format_sources(context: Metadata[]): ISource[] {
     return context.map((c) => {
-      const type = c.source.startsWith("Quran") ? "Qur'an" : "Hadith";
+      let type: "Hadith" | "Qur'an" | "Tafsir" = "Qur'an";
+      if (c.source.startsWith("Hadith")) {
+        type = "Hadith";
+      } else if (c.source.startsWith("Tafsir")) {
+        type = "Tafsir";
+      }
       return {
         citation: c.source,
         type: type,
-        text: c.text, // Include the actual verse/hadith text
+        text: c.text, // Include the actual verse/hadith/tafsir text
         url: "#", // Placeholder
         arabic: "", // Placeholder
         transliteration: "", // Placeholder

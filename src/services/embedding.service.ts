@@ -98,15 +98,9 @@ export class EmbeddingService {
       return await this.service.embedBatch(texts);
     }
 
-    const embeddings: number[][] = [];
-    for (let i = 0; i < texts.length; i++) {
-      embeddings.push(await this.service.embedQuery(texts[i]));
-
-      if (i < texts.length - 1) {
-        await this.delay(100);
-      }
-    }
-    return embeddings;
+    // Use Promise.all for parallel processing instead of sequential
+    const embeddingPromises = texts.map(text => this.service.embedQuery(text));
+    return await Promise.all(embeddingPromises);
   }
 
   private delay(ms: number): Promise<void> {

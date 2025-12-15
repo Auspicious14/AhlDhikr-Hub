@@ -20,3 +20,9 @@ export interface Metadata {
   text: string;
   source: string;
 }
+
+export interface SeerahEntry {
+  topic: string;
+  content: string;
+  source: string;
+}

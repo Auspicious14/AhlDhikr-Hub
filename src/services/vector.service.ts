@@ -40,6 +40,7 @@ export class VectorService {
 
       const quranVerses = await this.dataRepository.getQuranVerses();
       const hadiths = await this.dataRepository.getHadith();
+      const tafsirDocs = await this.dataRepository.getTafsir();
 
       const maxDocuments = process.env.MAX_DOCUMENTS_TO_INDEX
         ? parseInt(process.env.MAX_DOCUMENTS_TO_INDEX, 10)
@@ -49,18 +50,24 @@ export class VectorService {
         ? parseInt(process.env.EMBEDDING_DELAY_MS, 10)
         : 100;
 
-      const totalAvailable = quranVerses.length + hadiths.length;
+      const totalAvailable =
+        quranVerses.length + hadiths.length + tafsirDocs.length;
       const quranSampleSize = Math.min(
         quranVerses.length,
         Math.floor((quranVerses.length / totalAvailable) * maxDocuments)
       );
       const hadithSampleSize = Math.min(
         hadiths.length,
-        maxDocuments - quranSampleSize
+        Math.floor((hadiths.length / totalAvailable) * maxDocuments)
+      );
+      const tafsirSampleSize = Math.min(
+        tafsirDocs.length,
+        maxDocuments - quranSampleSize - hadithSampleSize
       );
 
       const sampledQuran = this.sampleDocuments(quranVerses, quranSampleSize);
       const sampledHadith = this.sampleDocuments(hadiths, hadithSampleSize);
+      const sampledTafsir = this.sampleDocuments(tafsirDocs, tafsirSampleSize);
 
       const documents = [
         ...sampledQuran.map((v) => ({
@@ -71,6 +78,10 @@ export class VectorService {
           text: h.hadith_english,
           source: `Hadith (${h.by_book})`,
         })),
+        ...sampledTafsir.map((t) => ({
+          text: t.text,
+          source: t.source,
+        })),
       ];
 
       console.log(`📊 Data Summary:`);
@@ -80,6 +91,9 @@ export class VectorService {
       );
       console.log(
         `   Hadiths: ${hadiths.length} (sampling ${sampledHadith.length})`
+      );
+      console.log(
+        `   Tafsir documents: ${tafsirDocs.length} (sampling ${sampledTafsir.length})`
       );
       console.log(`   Processing: ${documents.length} documents`);
       console.log(`   Batch Size: ${this.BATCH_SIZE}`);

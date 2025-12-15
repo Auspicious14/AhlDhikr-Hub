@@ -1,7 +1,9 @@
 import axios from "axios";
 import * as fs from "fs/promises";
 import * as path from "path";
-import { QuranVerse, Hadith } from "../models/types";
+import { QuranVerse, Hadith, SeerahEntry } from "../models/types";
+import { TafsirService } from "../services/tafsir.service";
+import { TafsirDocument } from "../models/tafsir.types";
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -9,6 +11,8 @@ dotenv.config();
 const DATA_DIR = path.join(__dirname, "..", "..", "data");
 const QURAN_FILE = path.join(DATA_DIR, "quran.json");
 const HADITH_FILE = path.join(DATA_DIR, "hadith.json");
+const TAFSIR_FILE = path.join(DATA_DIR, "tafsir.json");
+const SEERAH_FILE = path.join(DATA_DIR, "seerah.json");
 const HADITH_API_KEY = process.env.HADITH_API_KEY;
 
 export class DataRepository {
@@ -98,5 +102,35 @@ export class DataRepository {
     await fs.writeFile(HADITH_FILE, JSON.stringify(allHadiths, null, 2));
     console.log(`Hadith data cached with ${allHadiths.length} hadiths.`);
     return allHadiths;
+  }
+
+  async getTafsir(): Promise<TafsirDocument[]> {
+    if (await this.fileExists(TAFSIR_FILE)) {
+      const data = await fs.readFile(TAFSIR_FILE, "utf-8");
+      console.log("Loaded Tafsir data from cache.");
+      return JSON.parse(data);
+    }
+
+    console.log("Fetching Tafsir data from API...");
+    const tafsirService = new TafsirService();
+    const tafsirDocuments = await tafsirService.getTafsirDocuments();
+
+    // Cache the data
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.writeFile(TAFSIR_FILE, JSON.stringify(tafsirDocuments, null, 2));
+    console.log(`Tafsir data cached with ${tafsirDocuments.length} documents.`);
+
+    return tafsirDocuments;
+  }
+
+  async getSeerah(): Promise<SeerahEntry[]> {
+    if (await this.fileExists(SEERAH_FILE)) {
+      const data = await fs.readFile(SEERAH_FILE, "utf-8");
+      console.log("Loaded Seerah data from cache.");
+      return JSON.parse(data);
+    }
+
+    // If no cached file, they need to run the extraction script
+    throw new Error("Seerah data not found. Run: npm run extract-seerah");
   }
 }

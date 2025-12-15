@@ -2,7 +2,7 @@ import { Document, Schema, model } from "mongoose";
 
 export interface ISource {
   citation: string;
-  type: "Hadith" | "Qur'an";
+  type: "Hadith" | "Qur'an" | "Tafsir";
   text: string; // The actual verse or hadith text
   url?: string;
   arabic?: string;
@@ -24,7 +24,7 @@ export interface IAnswer extends Document {
 
 const SourceSchema = new Schema<ISource>({
   citation: { type: String, required: true },
-  type: { type: String, required: true, enum: ["Hadith", "Qur'an"] },
+  type: { type: String, required: true, enum: ["Hadith", "Qur'an", "Tafsir"] },
   text: { type: String, required: true },
   url: { type: String },
   arabic: { type: String },
