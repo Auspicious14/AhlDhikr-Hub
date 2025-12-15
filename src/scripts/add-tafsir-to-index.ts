@@ -77,7 +77,7 @@ async function rebuildIndexWithTafsir() {
       })),
       ...sampledHadith.map((h) => ({
         text: h.hadith_english,
-        source: `Hadith (${h.by_book})`,
+        source: `Hadith (${h.book})`,
       })),
       ...sampledTafsir.map((t) => ({
         text: t.text,

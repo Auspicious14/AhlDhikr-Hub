@@ -135,17 +135,10 @@
 //   }
 // }
 
-
-
 import axios from "axios";
 import * as fs from "fs/promises";
 import * as path from "path";
-import {
-  QuranVerse,
-  Hadith,
-  SeerahEntry,
-  DuaEntry,
-} from "../models/types";
+import { QuranVerse, Hadith, SeerahEntry, DuaEntry } from "../models/types";
 import { TafsirService } from "../services/tafsir.service";
 import { TafsirDocument } from "../models/tafsir.types";
 import * as dotenv from "dotenv";
@@ -174,7 +167,7 @@ export class DataRepository {
       return false;
     }
   }
-  
+
   async getQuranVerses(): Promise<QuranVerse[]> {
     if (await this.fileExists(QURAN_SINGLE_FILE)) {
       const data = await fs.readFile(QURAN_SINGLE_FILE, "utf-8");
@@ -183,7 +176,9 @@ export class DataRepository {
     }
 
     console.log("Fetching Quran (en.asad) from alquran.cloud...");
-    const response = await axios.get("https://api.alquran.cloud/v1/quran/en.asad");
+    const response = await axios.get(
+      "https://api.alquran.cloud/v1/quran/en.asad"
+    );
     const verses = response.data.data.surahs.flatMap((surah: any) =>
       surah.ayahs.map((ayah: any) => ({
         number: ayah.number,
@@ -211,7 +206,9 @@ export class DataRepository {
       return JSON.parse(data);
     }
 
-    console.log("Fetching multiple Quran editions from fawazahmed0/quran-api CDN...");
+    console.log(
+      "Fetching multiple Quran editions from fawazahmed0/quran-api CDN..."
+    );
     const editions = [
       { id: "eng-sahih", name: "Sahih International" },
       { id: "eng-yusufali", name: "Yusuf Ali" },
@@ -243,11 +240,12 @@ export class DataRepository {
 
     await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.writeFile(QURAN_EDITIONS_FILE, JSON.stringify(allVerses, null, 2));
-    console.log(`Multiple Quran editions cached: ${allVerses.length} total verses.`);
+    console.log(
+      `Multiple Quran editions cached: ${allVerses.length} total verses.`
+    );
     return allVerses;
   }
 
-  
   async getHadith(): Promise<Hadith[]> {
     if (await this.fileExists(HADITH_BUKHARI_FILE)) {
       const data = await fs.readFile(HADITH_BUKHARI_FILE, "utf-8");
@@ -256,7 +254,9 @@ export class DataRepository {
     }
 
     if (!HADITH_API_KEY) {
-      throw new Error("HADITH_API_KEY is not set in the environment variables.");
+      throw new Error(
+        "HADITH_API_KEY is not set in the environment variables."
+      );
     }
 
     console.log("Fetching all Hadiths from Sahih Bukhari via HadithAPI...");
@@ -272,7 +272,17 @@ export class DataRepository {
 
         const hadiths = data.map((h: any) => ({
           hadith_english: h.hadithEnglish,
-          by_book: h.book.bookName,
+          hadith_arabic: "", // Not available in this API
+          book: h.book.bookName,
+          chapter_english: "", // Not available in this API
+          chapter_arabic: "", // Not available in this API
+          hadith_number: h.hadithNumber || "",
+          grading: h.grade || "",
+          collection: h.book.bookName,
+          narrator: "", // Not available in this API
+          reference: h.hadithNumber
+            ? `${h.book.bookName} ${h.hadithNumber}`
+            : h.book.bookName,
         }));
 
         allHadiths.push(...hadiths);
@@ -280,7 +290,9 @@ export class DataRepository {
         page = current_page + 1;
         lastPage = last_page;
 
-        console.log(`Fetched page ${current_page}/${lastPage} (${hadiths.length} hadiths)`);
+        console.log(
+          `Fetched page ${current_page}/${lastPage} (${hadiths.length} hadiths)`
+        );
 
         if (page <= lastPage) {
           await new Promise((resolve) => setTimeout(resolve, 500));
@@ -292,11 +304,13 @@ export class DataRepository {
     } while (page <= lastPage);
 
     await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(HADITH_BUKHARI_FILE, JSON.stringify(allHadiths, null, 2));
+    await fs.writeFile(
+      HADITH_BUKHARI_FILE,
+      JSON.stringify(allHadiths, null, 2)
+    );
     console.log(`Sahih Bukhari cached: ${allHadiths.length} hadiths.`);
     return allHadiths;
   }
-
 
   async getFullHadith(): Promise<Hadith[]> {
     if (await this.fileExists(FULL_HADITH_FILE)) {
@@ -305,7 +319,9 @@ export class DataRepository {
       return JSON.parse(data);
     }
 
-    console.log("Fetching full hadith collections from AhmedBaset/hadith-json (by_book format - efficient)...");
+    console.log(
+      "Fetching full hadith collections from AhmedBaset/hadith-json (by_book format - efficient)..."
+    );
 
     const collections = [
       "bukhari",
@@ -325,34 +341,42 @@ export class DataRepository {
       try {
         const url = `https://raw.githubusercontent.com/AhmedBaset/hadith-json/main/db/by_book/the_9_books/${collection}.json`;
         const response = await axios.get(url);
-        const hadithsData: any[] = response.data; 
+        const hadithsData: any[] = response.data;
 
         const mappedHadiths = hadithsData.map((h: any) => ({
           hadith_english: h.english?.text || "",
           hadith_arabic: h.arabic || "",
-          by_book: collection.charAt(0).toUpperCase() + collection.slice(1),
-          chapter: "",
+          book: collection.charAt(0).toUpperCase() + collection.slice(1),
+          chapter_english: "", // Not available in this source
+          chapter_arabic: "", // Not available in this source
           hadith_number: h.id.toString(),
-          grading: "",
+          grading: "", // Not available in this source
+          collection: collection.charAt(0).toUpperCase() + collection.slice(1),
+          narrator: "", // Not available in this source
+          reference: `${
+            collection.charAt(0).toUpperCase() + collection.slice(1)
+          } ${h.id}`,
         }));
 
         allHadiths.push(...mappedHadiths);
-        console.log(`Fetched ${collection.toUpperCase()}: ${mappedHadiths.length} hadiths`);
+        console.log(
+          `Fetched ${collection.toUpperCase()}: ${mappedHadiths.length} hadiths`
+        );
       } catch (error: any) {
         console.warn(`Failed to fetch ${collection}: ${error.message}`);
       }
 
-      
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
 
     await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.writeFile(FULL_HADITH_FILE, JSON.stringify(allHadiths, null, 2));
-    console.log(`Full hadith collections cached: ${allHadiths.length} total hadiths from 9 books.`);
+    console.log(
+      `Full hadith collections cached: ${allHadiths.length} total hadiths from 9 books.`
+    );
     return allHadiths;
   }
 
-  
   async getTafsir(): Promise<TafsirDocument[]> {
     if (await this.fileExists(TAFSIR_FILE)) {
       const data = await fs.readFile(TAFSIR_FILE, "utf-8");
@@ -387,10 +411,13 @@ export class DataRepository {
       return JSON.parse(data);
     }
 
-    console.log("Fetching Hisn al-Muslim duas from wafaaelmaandy/husn_en.json...");
+    console.log(
+      "Fetching Hisn al-Muslim duas from wafaaelmaandy/husn_en.json..."
+    );
 
     try {
-      const url = "https://raw.githubusercontent.com/wafaaelmaandy/Hisn-Muslim-Json/refs/heads/master/husn_en.json";
+      const url =
+        "https://raw.githubusercontent.com/wafaaelmaandy/Hisn-Muslim-Json/refs/heads/master/husn_en.json";
       const response = await axios.get(url);
       const rawData: any = response.data;
 
@@ -407,7 +434,7 @@ export class DataRepository {
             arabic: textItem.ARABIC_TEXT || "",
             transliteration: textItem.LANGUAGE_ARABIC_TRANSLATED_TEXT || "",
             english: textItem.TRANSLATED_TEXT || "",
-            reference: "", 
+            reference: "",
             note: textItem.REPEAT ? `Repeat ${textItem.REPEAT} time(s)` : "",
           });
         }
@@ -415,7 +442,9 @@ export class DataRepository {
 
       await fs.mkdir(DATA_DIR, { recursive: true });
       await fs.writeFile(DUAS_FILE, JSON.stringify(duas, null, 2));
-      console.log(`Hisn al-Muslim cached: ${duas.length} individual duas across ${englishData.length} categories.`);
+      console.log(
+        `Hisn al-Muslim cached: ${duas.length} individual duas across ${englishData.length} categories.`
+      );
       return duas;
     } catch (error: any) {
       console.error(`Failed to fetch Hisn al-Muslim: ${error.message}`);
@@ -424,9 +453,12 @@ export class DataRepository {
       const fallback: DuaEntry[] = [
         {
           category: "Morning & Evening",
-          arabic: "أَعُوذُ بِاللَّهِ مِنَ الشَّيطَانِ الرَّجِيمِ ﴿اللَّهُ لاَ إِلَهَ إِلاَّ هُوَ الْحَيُّ الْقَيُّومُ﴾...",
-          transliteration: "A'udhu billahi min ash-shaytan ir-rajim. Allahu la ilaha illa huwa al-hayyu al-qayyum...",
-          english: "I seek refuge in Allah from Satan the accursed. Allah - there is no deity except Him, the Ever-Living, the Sustainer of existence...",
+          arabic:
+            "أَعُوذُ بِاللَّهِ مِنَ الشَّيطَانِ الرَّجِيمِ ﴿اللَّهُ لاَ إِلَهَ إِلاَّ هُوَ الْحَيُّ الْقَيُّومُ﴾...",
+          transliteration:
+            "A'udhu billahi min ash-shaytan ir-rajim. Allahu la ilaha illa huwa al-hayyu al-qayyum...",
+          english:
+            "I seek refuge in Allah from Satan the accursed. Allah - there is no deity except Him, the Ever-Living, the Sustainer of existence...",
           reference: "Al-Baqarah 2:255",
           note: "Ayat al-Kursi - Recite morning and evening",
         },
@@ -436,4 +468,4 @@ export class DataRepository {
       return fallback;
     }
   }
-      }
+}
