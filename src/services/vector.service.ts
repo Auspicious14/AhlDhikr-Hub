@@ -17,7 +17,7 @@ export class VectorService {
   private dataRepository: DataRepository;
   private vectorRepository: VectorRepository;
   private embeddingService: EmbeddingService;
-  private readonly BATCH_SIZE = 50;
+  private readonly BATCH_SIZE = 100;
   private readonly CHECKPOINT_INTERVAL = 500;
 
   constructor(

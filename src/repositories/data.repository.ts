@@ -341,22 +341,43 @@ export class DataRepository {
       try {
         const url = `https://raw.githubusercontent.com/AhmedBaset/hadith-json/main/db/by_book/the_9_books/${collection}.json`;
         const response = await axios.get(url);
-        const hadithsData: any[] = response.data;
+        const collectionData = response.data;
 
-        const mappedHadiths = hadithsData.map((h: any) => ({
-          hadith_english: h.english?.text || "",
-          hadith_arabic: h.arabic || "",
-          book: collection.charAt(0).toUpperCase() + collection.slice(1),
-          chapter_english: "", // Not available in this source
-          chapter_arabic: "", // Not available in this source
-          hadith_number: h.id.toString(),
-          grading: "", // Not available in this source
-          collection: collection.charAt(0).toUpperCase() + collection.slice(1),
-          narrator: "", // Not available in this source
-          reference: `${
-            collection.charAt(0).toUpperCase() + collection.slice(1)
-          } ${h.id}`,
-        }));
+        // Extract hadiths - the API returns { metadata, chapters: [...], hadiths: [...] }
+        const mappedHadiths: Hadith[] = [];
+
+        // Create a map of chapters for quick lookup
+        const chaptersMap = new Map();
+        if (collectionData.chapters && Array.isArray(collectionData.chapters)) {
+          collectionData.chapters.forEach((chapter: any) => {
+            chaptersMap.set(chapter.id, chapter);
+          });
+        }
+
+        // Process hadiths from the root level
+        if (collectionData.hadiths && Array.isArray(collectionData.hadiths)) {
+          collectionData.hadiths.forEach((h: any) => {
+            const chapter = chaptersMap.get(h.chapterId);
+            mappedHadiths.push({
+              hadith_english: h.english?.text || "",
+              hadith_arabic: h.arabic || "",
+              book: collection.charAt(0).toUpperCase() + collection.slice(1),
+              chapter_english: chapter?.english || "",
+              chapter_arabic: chapter?.arabic || "",
+              hadith_number: h.idInBook?.toString() || h.id?.toString() || "",
+              grading: h.grading || "",
+              collection:
+                collectionData.metadata?.english?.title ||
+                collection.charAt(0).toUpperCase() + collection.slice(1),
+              narrator: h.english?.narrator || "",
+              reference: `${
+                collectionData.metadata?.english?.title || collection
+              } ${h.idInBook || h.id || ""}`.trim(),
+            });
+          });
+        } else {
+          console.warn(`No hadiths found in ${collection} data structure`);
+        }
 
         allHadiths.push(...mappedHadiths);
         console.log(
