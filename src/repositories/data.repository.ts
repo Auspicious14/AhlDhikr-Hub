@@ -135,12 +135,17 @@
 //   }
 // }
 
-// src/repositories/data.repository.ts
+
 
 import axios from "axios";
 import * as fs from "fs/promises";
 import * as path from "path";
-import { QuranVerse, Hadith, SeerahEntry, DuaEntry } from "../models/types";
+import {
+  QuranVerse,
+  Hadith,
+  SeerahEntry,
+  DuaEntry,
+} from "../models/types";
 import { TafsirService } from "../services/tafsir.service";
 import { TafsirDocument } from "../models/tafsir.types";
 import * as dotenv from "dotenv";
@@ -149,16 +154,16 @@ dotenv.config();
 
 const DATA_DIR = path.join(__dirname, "..", "..", "data");
 
-// Existing cache files
+// Cache files
 const QURAN_SINGLE_FILE = path.join(DATA_DIR, "quran.json");
 const HADITH_BUKHARI_FILE = path.join(DATA_DIR, "hadith.json");
 const TAFSIR_FILE = path.join(DATA_DIR, "tafsir.json");
 const SEERAH_FILE = path.join(DATA_DIR, "seerah.json");
-
-// New expanded cache files
 const QURAN_EDITIONS_FILE = path.join(DATA_DIR, "quran_editions.json");
 const FULL_HADITH_FILE = path.join(DATA_DIR, "full_hadith.json");
 const DUAS_FILE = path.join(DATA_DIR, "duas.json");
+
+const HADITH_API_KEY = process.env.HADITH_API_KEY;
 
 export class DataRepository {
   private async fileExists(filePath: string): Promise<boolean> {
@@ -169,19 +174,16 @@ export class DataRepository {
       return false;
     }
   }
-
-  // ====================== ORIGINAL QURAN (Asad - kept for backward compatibility) ======================
+  
   async getQuranVerses(): Promise<QuranVerse[]> {
     if (await this.fileExists(QURAN_SINGLE_FILE)) {
       const data = await fs.readFile(QURAN_SINGLE_FILE, "utf-8");
-      console.log("Loaded single Quran edition (Asad) from cache.");
+      console.log("Loaded Quran (en.asad) from cache.");
       return JSON.parse(data);
     }
 
-    console.log("Fetching Quran (Asad translation) from alquran.cloud...");
-    const response = await axios.get(
-      "https://api.alquran.cloud/v1/quran/en.asad"
-    );
+    console.log("Fetching Quran (en.asad) from alquran.cloud...");
+    const response = await axios.get("https://api.alquran.cloud/v1/quran/en.asad");
     const verses = response.data.data.surahs.flatMap((surah: any) =>
       surah.ayahs.map((ayah: any) => ({
         number: ayah.number,
@@ -198,11 +200,10 @@ export class DataRepository {
 
     await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.writeFile(QURAN_SINGLE_FILE, JSON.stringify(verses, null, 2));
-    console.log("Single Quran edition cached.");
+    console.log("Quran (en.asad) cached.");
     return verses;
   }
 
-  // ====================== MULTIPLE QURAN EDITIONS (Highly Recommended) ======================
   async getQuranEditions(): Promise<any[]> {
     if (await this.fileExists(QURAN_EDITIONS_FILE)) {
       const data = await fs.readFile(QURAN_EDITIONS_FILE, "utf-8");
@@ -210,15 +211,13 @@ export class DataRepository {
       return JSON.parse(data);
     }
 
-    console.log(
-      "Fetching multiple Quran editions from fawazahmed0/quran-api..."
-    );
+    console.log("Fetching multiple Quran editions from fawazahmed0/quran-api CDN...");
     const editions = [
       { id: "eng-sahih", name: "Sahih International" },
       { id: "eng-yusufali", name: "Yusuf Ali" },
       { id: "eng-pickthall", name: "Pickthall" },
       { id: "eng-shakir", name: "Shakir" },
-      { id: "ara-quranuthmani", name: "Uthmani Script" },
+      { id: "ara-quranuthmani", name: "Arabic Uthmani Script" },
     ];
 
     const allVerses: any[] = [];
@@ -244,42 +243,71 @@ export class DataRepository {
 
     await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.writeFile(QURAN_EDITIONS_FILE, JSON.stringify(allVerses, null, 2));
-    console.log(
-      `Multiple Quran editions cached: ${allVerses.length} total verses.`
-    );
+    console.log(`Multiple Quran editions cached: ${allVerses.length} total verses.`);
     return allVerses;
   }
 
-  // ====================== ORIGINAL BUKHARI HADITH (kept for fallback) ======================
-  async getHadithBukhari(): Promise<Hadith[]> {
+  
+  async getHadith(): Promise<Hadith[]> {
     if (await this.fileExists(HADITH_BUKHARI_FILE)) {
       const data = await fs.readFile(HADITH_BUKHARI_FILE, "utf-8");
-      console.log("Loaded Sahih Bukhari from cache.");
+      console.log("Loaded Sahih Bukhari (original API) from cache.");
       return JSON.parse(data);
     }
 
-    const apiKey = process.env.HADITH_API_KEY;
-    if (!apiKey) {
-      throw new Error("HADITH_API_KEY not set for original Bukhari fetch.");
+    if (!HADITH_API_KEY) {
+      throw new Error("HADITH_API_KEY is not set in the environment variables.");
     }
 
-    // ... your original pagination logic unchanged
-    // (omitted for brevity, keep as-is)
-    return []; // placeholder
+    console.log("Fetching all Hadiths from Sahih Bukhari via HadithAPI...");
+    const allHadiths: Hadith[] = [];
+    let page = 1;
+    let lastPage = 1;
+
+    do {
+      try {
+        const url = `https://hadithapi.com/public/api/hadiths?apiKey=${HADITH_API_KEY}&book=sahih-bukhari&page=${page}`;
+        const response = await axios.get(url);
+        const { data, current_page, last_page } = response.data.hadiths;
+
+        const hadiths = data.map((h: any) => ({
+          hadith_english: h.hadithEnglish,
+          by_book: h.book.bookName,
+        }));
+
+        allHadiths.push(...hadiths);
+
+        page = current_page + 1;
+        lastPage = last_page;
+
+        console.log(`Fetched page ${current_page}/${lastPage} (${hadiths.length} hadiths)`);
+
+        if (page <= lastPage) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      } catch (error: any) {
+        console.error(`Error fetching page ${page}:`, error.message);
+        break;
+      }
+    } while (page <= lastPage);
+
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.writeFile(HADITH_BUKHARI_FILE, JSON.stringify(allHadiths, null, 2));
+    console.log(`Sahih Bukhari cached: ${allHadiths.length} hadiths.`);
+    return allHadiths;
   }
 
-  // ====================== FULL HADITH COLLECTIONS (Kutub Sitta + more - NO API KEY NEEDED) ======================
+
   async getFullHadith(): Promise<Hadith[]> {
     if (await this.fileExists(FULL_HADITH_FILE)) {
       const data = await fs.readFile(FULL_HADITH_FILE, "utf-8");
-      console.log("Loaded full hadith collections from cache.");
+      console.log("Loaded full hadith collections (9 books) from cache.");
       return JSON.parse(data);
     }
 
-    console.log(
-      "Fetching full hadith collections (Nine Books) from AhmedBaset/hadith-json..."
-    );
-    const books = [
+    console.log("Fetching full hadith collections from AhmedBaset/hadith-json (by_book format - efficient)...");
+
+    const collections = [
       "bukhari",
       "muslim",
       "tirmidhi",
@@ -293,35 +321,38 @@ export class DataRepository {
 
     const allHadiths: Hadith[] = [];
 
-    for (const book of books) {
+    for (const collection of collections) {
       try {
-        const url = `https://raw.githubusercontent.com/AhmedBaset/hadith-json/main/data/${book}.json`;
+        const url = `https://raw.githubusercontent.com/AhmedBaset/hadith-json/main/db/by_book/the_9_books/${collection}.json`;
         const response = await axios.get(url);
-        const hadiths = response.data.map((h: any) => ({
+        const hadithsData: any[] = response.data; 
+
+        const mappedHadiths = hadithsData.map((h: any) => ({
           hadith_english: h.english?.text || "",
-          hadith_arabic: h.arabic?.text || "",
-          book: book.charAt(0).toUpperCase() + book.slice(1),
-          chapter_english: h.chapter?.english || "",
-          chapter_arabic: h.chapter?.arabic || "",
-          hadith_number: h.hadithNumber || h.id || "",
-          grading: h.grading || "",
+          hadith_arabic: h.arabic || "",
+          by_book: collection.charAt(0).toUpperCase() + collection.slice(1),
+          chapter: "",
+          hadith_number: h.id.toString(),
+          grading: "",
         }));
-        allHadiths.push(...hadiths);
-        console.log(`Fetched ${book}: ${hadiths.length} hadiths`);
+
+        allHadiths.push(...mappedHadiths);
+        console.log(`Fetched ${collection.toUpperCase()}: ${mappedHadiths.length} hadiths`);
       } catch (error: any) {
-        console.warn(`Failed to fetch ${book}: ${error.message}`);
+        console.warn(`Failed to fetch ${collection}: ${error.message}`);
       }
+
+      
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
 
     await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.writeFile(FULL_HADITH_FILE, JSON.stringify(allHadiths, null, 2));
-    console.log(
-      `Full hadith collections cached: ${allHadiths.length} total hadiths.`
-    );
+    console.log(`Full hadith collections cached: ${allHadiths.length} total hadiths from 9 books.`);
     return allHadiths;
   }
 
-  // ====================== TAFSIR (unchanged - using your TafsirService) ======================
+  
   async getTafsir(): Promise<TafsirDocument[]> {
     if (await this.fileExists(TAFSIR_FILE)) {
       const data = await fs.readFile(TAFSIR_FILE, "utf-8");
@@ -339,7 +370,6 @@ export class DataRepository {
     return tafsirDocuments;
   }
 
-  // ====================== SEERAH (unchanged) ======================
   async getSeerah(): Promise<SeerahEntry[]> {
     if (await this.fileExists(SEERAH_FILE)) {
       const data = await fs.readFile(SEERAH_FILE, "utf-8");
@@ -350,7 +380,6 @@ export class DataRepository {
     throw new Error("Seerah data not found. Run: npm run extract-seerah");
   }
 
-  // ====================== DUAS - Hisn al-Muslim (Fortress of the Muslim) ======================
   async getDuas(): Promise<DuaEntry[]> {
     if (await this.fileExists(DUAS_FILE)) {
       const data = await fs.readFile(DUAS_FILE, "utf-8");
@@ -358,23 +387,53 @@ export class DataRepository {
       return JSON.parse(data);
     }
 
-    console.log("Fetching Hisn al-Muslim (Arabic + English)...");
-    const url =
-      "https://raw.githubusercontent.com/wafaaelmaandy/Hisn-Muslim-Json/main/hisn_almuslim_en_ar.json";
-    const response = await axios.get(url);
+    console.log("Fetching Hisn al-Muslim duas from wafaaelmaandy/husn_en.json...");
 
-    const duas: DuaEntry[] = response.data.map((item: any) => ({
-      category: item.category || "General",
-      arabic: item.arabic_text || "",
-      transliteration: item.transliteration || "",
-      english: item.translation || "",
-      reference: item.reference || "",
-      note: item.note || "",
-    }));
+    try {
+      const url = "https://raw.githubusercontent.com/wafaaelmaandy/Hisn-Muslim-Json/refs/heads/master/husn_en.json";
+      const response = await axios.get(url);
+      const rawData: any = response.data;
 
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(DUAS_FILE, JSON.stringify(duas, null, 2));
-    console.log(`Hisn al-Muslim cached: ${duas.length} duas.`);
-    return duas;
+      const englishData = rawData.English || [];
+
+      const duas: DuaEntry[] = [];
+
+      for (const categoryItem of englishData) {
+        const categoryTitle = categoryItem.TITLE || "General";
+
+        for (const textItem of categoryItem.TEXT || []) {
+          duas.push({
+            category: categoryTitle,
+            arabic: textItem.ARABIC_TEXT || "",
+            transliteration: textItem.LANGUAGE_ARABIC_TRANSLATED_TEXT || "",
+            english: textItem.TRANSLATED_TEXT || "",
+            reference: "", 
+            note: textItem.REPEAT ? `Repeat ${textItem.REPEAT} time(s)` : "",
+          });
+        }
+      }
+
+      await fs.mkdir(DATA_DIR, { recursive: true });
+      await fs.writeFile(DUAS_FILE, JSON.stringify(duas, null, 2));
+      console.log(`Hisn al-Muslim cached: ${duas.length} individual duas across ${englishData.length} categories.`);
+      return duas;
+    } catch (error: any) {
+      console.error(`Failed to fetch Hisn al-Muslim: ${error.message}`);
+      console.log("Using minimal fallback duas...");
+
+      const fallback: DuaEntry[] = [
+        {
+          category: "Morning & Evening",
+          arabic: "أَعُوذُ بِاللَّهِ مِنَ الشَّيطَانِ الرَّجِيمِ ﴿اللَّهُ لاَ إِلَهَ إِلاَّ هُوَ الْحَيُّ الْقَيُّومُ﴾...",
+          transliteration: "A'udhu billahi min ash-shaytan ir-rajim. Allahu la ilaha illa huwa al-hayyu al-qayyum...",
+          english: "I seek refuge in Allah from Satan the accursed. Allah - there is no deity except Him, the Ever-Living, the Sustainer of existence...",
+          reference: "Al-Baqarah 2:255",
+          note: "Ayat al-Kursi - Recite morning and evening",
+        },
+      ];
+
+      await fs.writeFile(DUAS_FILE, JSON.stringify(fallback, null, 2));
+      return fallback;
+    }
   }
-}
+      }
