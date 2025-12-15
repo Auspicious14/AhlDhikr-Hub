@@ -33,7 +33,7 @@ async function rebuildIndexWithTafsir() {
     // Fetch all data sources
     console.log("📚 Fetching all data sources...");
     const quranVerses = await dataRepository.getQuranVerses();
-    const hadiths = await dataRepository.getHadith();
+    const hadiths = await dataRepository.getFullHadith();
     const tafsirDocs = await dataRepository.getTafsir();
 
     console.log(`📖 Quran verses: ${quranVerses.length}`);

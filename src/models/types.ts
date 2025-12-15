@@ -26,3 +26,42 @@ export interface SeerahEntry {
   content: string;
   source: string;
 }
+
+// Add to your existing types file
+
+export interface QuranVerse {
+  number: number;
+  numberInSurah: number;
+  text: string;
+  surah: {
+    number: number;
+    name: string;
+    englishName: string;
+    englishNameTranslation: string;
+  };
+}
+
+export interface Hadith {
+  hadith_english: string;
+  hadith_arabic?: string;
+  book: string;
+  chapter_english?: string;
+  chapter_arabic?: string;
+  hadith_number: string;
+  grading?: string;
+}
+
+export interface SeerahEntry {
+  topic: string;
+  content: string;
+  source: string;
+}
+
+export interface DuaEntry {
+  category: string;
+  arabic: string;
+  transliteration: string;
+  english: string;
+  reference: string;
+  note: string;
+}

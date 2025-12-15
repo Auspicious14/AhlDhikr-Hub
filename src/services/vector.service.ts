@@ -39,7 +39,7 @@ export class VectorService {
       await this.embeddingService.initialize();
 
       const quranVerses = await this.dataRepository.getQuranVerses();
-      const hadiths = await this.dataRepository.getHadith();
+      const hadiths = await this.dataRepository.getFullHadith();
       const tafsirDocs = await this.dataRepository.getTafsir();
 
       const maxDocuments = process.env.MAX_DOCUMENTS_TO_INDEX
