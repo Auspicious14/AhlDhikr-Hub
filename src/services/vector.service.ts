@@ -38,7 +38,7 @@ export class VectorService {
 
       await this.embeddingService.initialize();
 
-      const quranVerses = await this.dataRepository.getQuranEditions();
+      const quranVerses = await this.dataRepository.getQuranVerses();
       const hadiths = await this.dataRepository.getFullHadith();
       const tafsirDocs = await this.dataRepository.getTafsir();
 

@@ -207,7 +207,26 @@ export class VectorRepository {
   }
 
   addPoint(embedding: number[], id: number): void {
-    this.index.addPoint(embedding, id);
+    try {
+      this.index.addPoint(embedding, id);
+    } catch (e) {
+      // If we hit the capacity limit, resize the index
+      if (
+        e instanceof Error &&
+        e.message.includes("exceeds the specified limit")
+      ) {
+        console.log(
+          `Resizing index from ${this.index.getMaxElements()} to ${
+            this.index.getMaxElements() * 5
+          }`
+        );
+        this.index.resizeIndex(this.index.getMaxElements() * 5);
+        // Retry adding the point after resizing
+        this.index.addPoint(embedding, id);
+      } else {
+        throw e;
+      }
+    }
   }
 
   search(embedding: number[], k: number): number[] {
@@ -225,5 +244,9 @@ export class VectorRepository {
 
   getCurrentCount(): number {
     return this.index.getCurrentCount();
+  }
+
+  getMaxElements(): number {
+    return this.index.getMaxElements();
   }
 }
