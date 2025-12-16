@@ -41,6 +41,8 @@ export class VectorService {
       const quranVerses = await this.dataRepository.getQuranVerses();
       const hadiths = await this.dataRepository.getFullHadith();
       const tafsirDocs = await this.dataRepository.getTafsir();
+      const duas = await this.dataRepository.getDuas();
+      const seerahEntries = await this.dataRepository.getSeerah();
 
       const maxDocuments = process.env.MAX_DOCUMENTS_TO_INDEX
         ? parseInt(process.env.MAX_DOCUMENTS_TO_INDEX, 10)
@@ -51,7 +53,11 @@ export class VectorService {
         : 100;
 
       const totalAvailable =
-        quranVerses.length + hadiths.length + tafsirDocs.length;
+        quranVerses.length +
+        hadiths.length +
+        tafsirDocs.length +
+        duas.length +
+        seerahEntries.length;
       const quranSampleSize = Math.min(
         quranVerses.length,
         Math.floor((quranVerses.length / totalAvailable) * maxDocuments)
@@ -62,25 +68,70 @@ export class VectorService {
       );
       const tafsirSampleSize = Math.min(
         tafsirDocs.length,
-        maxDocuments - quranSampleSize - hadithSampleSize
+        Math.floor((tafsirDocs.length / totalAvailable) * maxDocuments)
+      );
+      const duaSampleSize = Math.min(
+        duas.length,
+        Math.floor((duas.length / totalAvailable) * maxDocuments)
+      );
+      const seerahSampleSize = Math.min(
+        seerahEntries.length,
+        Math.floor((seerahEntries.length / totalAvailable) * maxDocuments)
       );
 
       const sampledQuran = this.sampleDocuments(quranVerses, quranSampleSize);
       const sampledHadith = this.sampleDocuments(hadiths, hadithSampleSize);
       const sampledTafsir = this.sampleDocuments(tafsirDocs, tafsirSampleSize);
+      const sampledDuas = this.sampleDocuments(duas, duaSampleSize);
+      const sampledSeerah = this.sampleDocuments(
+        seerahEntries,
+        seerahSampleSize
+      );
 
       const documents = [
         ...sampledQuran.map((v) => ({
           text: v.text,
           source: `Quran ${v.surah.englishName} ${v.surah.number}:${v.numberInSurah}`,
+          type: "quran" as const,
+          surah: v.surah,
+          verseNumber: v.number,
+          verseNumberInSurah: v.numberInSurah,
+          arabicText: v.text, // Assuming this is Arabic, might need to check actual structure
         })),
         ...sampledHadith.map((h) => ({
           text: h.hadith_english,
           source: `Hadith (${h.book})`,
+          type: "hadith" as const,
+          hadithArabic: h.hadith_arabic,
+          book: h.book,
+          chapterEnglish: h.chapter_english,
+          chapterArabic: h.chapter_arabic,
+          hadithNumber: h.hadith_number,
+          grading: h.grading,
+          collection: h.collection,
+          narrator: h.narrator,
+          reference: h.reference,
         })),
         ...sampledTafsir.map((t) => ({
           text: t.text,
           source: t.source,
+          type: "tafsir" as const,
+          tafsirSource: t.source,
+        })),
+        ...sampledDuas.map((d) => ({
+          text: d.english,
+          source: d.note,
+          type: "dua" as const,
+          category: d.category,
+          transliteration: d.transliteration,
+          arabic: d.arabic,
+          duaReference: d.reference,
+        })),
+        ...sampledSeerah.map((s) => ({
+          text: s.content,
+          source: s.source,
+          type: "seerah" as const,
+          topic: s.topic,
         })),
       ];
 
@@ -94,6 +145,10 @@ export class VectorService {
       );
       console.log(
         `   Tafsir documents: ${tafsirDocs.length} (sampling ${sampledTafsir.length})`
+      );
+      console.log(`   Duas: ${duas.length} (sampling ${sampledDuas.length})`);
+      console.log(
+        `   Seerah entries: ${seerahEntries.length} (sampling ${sampledSeerah.length})`
       );
       console.log(`   Processing: ${documents.length} documents`);
       console.log(`   Batch Size: ${this.BATCH_SIZE}`);
@@ -148,18 +203,46 @@ export class VectorService {
             const normalizedEmbedding = normalizeVector(embeddings[j]);
             this.vectorRepository.addPoint(normalizedEmbedding, globalIndex);
 
+            // Build metadata object with conditional fields based on document type
+            const metaEntry: any = {
+              id: globalIndex,
+              text: batch[j].text,
+              source: batch[j].source,
+              type: batch[j].type,
+            };
+
+            // Add type-specific fields conditionally using type guards
+            const doc = batch[j];
+            if (doc.type === "quran") {
+              metaEntry.surah = (doc as any).surah;
+              metaEntry.verseNumber = (doc as any).verseNumber;
+              metaEntry.verseNumberInSurah = (doc as any).verseNumberInSurah;
+              metaEntry.arabicText = (doc as any).arabicText;
+            } else if (doc.type === "hadith") {
+              metaEntry.hadithArabic = (doc as any).hadithArabic;
+              metaEntry.book = (doc as any).book;
+              metaEntry.chapterEnglish = (doc as any).chapterEnglish;
+              metaEntry.chapterArabic = (doc as any).chapterArabic;
+              metaEntry.hadithNumber = (doc as any).hadithNumber;
+              metaEntry.grading = (doc as any).grading;
+              metaEntry.collection = (doc as any).collection;
+              metaEntry.narrator = (doc as any).narrator;
+              metaEntry.reference = (doc as any).reference;
+            } else if (doc.type === "dua") {
+              metaEntry.category = (doc as any).category;
+              metaEntry.transliteration = (doc as any).transliteration;
+              metaEntry.arabic = (doc as any).arabic;
+              metaEntry.duaReference = (doc as any).duaReference;
+            } else if (doc.type === "tafsir") {
+              metaEntry.tafsirSource = (doc as any).tafsirSource;
+            } else if (doc.type === "seerah") {
+              metaEntry.topic = (doc as any).topic;
+            }
+
             if (metadata.length <= globalIndex) {
-              metadata.push({
-                id: globalIndex,
-                text: batch[j].text,
-                source: batch[j].source,
-              });
+              metadata.push(metaEntry);
             } else {
-              metadata[globalIndex] = {
-                id: globalIndex,
-                text: batch[j].text,
-                source: batch[j].source,
-              };
+              metadata[globalIndex] = metaEntry;
             }
           }
 
@@ -170,12 +253,22 @@ export class VectorService {
             } documents (${Math.round((progress / documents.length) * 100)}%)`
           );
 
-          if (
+          // Debug checkpointing logic
+          const shouldCheckpoint =
             progress % this.CHECKPOINT_INTERVAL === 0 ||
-            progress === documents.length
-          ) {
+            progress === documents.length;
+          console.log(
+            `   Debug: progress=${progress}, CHECKPOINT_INTERVAL=${
+              this.CHECKPOINT_INTERVAL
+            }, shouldCheckpoint=${shouldCheckpoint}, modulo=${
+              progress % this.CHECKPOINT_INTERVAL
+            }`
+          );
+
+          if (shouldCheckpoint) {
             console.log(`💾 Checkpointing at ${progress} documents...`);
             await this.vectorRepository.saveIndex(metadata);
+            console.log(`✅ Checkpoint completed at ${progress} documents`);
           }
         } catch (batchError) {
           console.error(

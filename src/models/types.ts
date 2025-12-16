@@ -27,6 +27,36 @@ export interface Metadata {
   id: number;
   text: string;
   source: string;
+  type: 'quran' | 'hadith' | 'tafsir' | 'dua' | 'seerah';
+  // Quran-specific fields
+  surah?: {
+    number: number;
+    name: string;
+    englishName: string;
+    englishNameTranslation: string;
+  };
+  verseNumber?: number;
+  verseNumberInSurah?: number;
+  arabicText?: string;
+  // Hadith-specific fields
+  hadithArabic?: string;
+  book?: string;
+  chapterEnglish?: string;
+  chapterArabic?: string;
+  hadithNumber?: string;
+  grading?: string;
+  collection?: string;
+  narrator?: string;
+  reference?: string;
+  // Dua-specific fields
+  category?: string;
+  transliteration?: string;
+  arabic?: string;
+  duaReference?: string;
+  // Tafsir-specific fields
+  tafsirSource?: string;
+  // Seerah-specific fields
+  topic?: string;
 }
 
 export interface SeerahEntry {

@@ -82,6 +82,8 @@ async function rebuildIndexWithTafsir() {
       ...sampledTafsir.map((t) => ({
         text: t.text,
         source: t.source,
+        type: "tafsir" as const,
+        tafsirSource: t.source,
       })),
     ];
 
@@ -123,11 +125,22 @@ async function rebuildIndexWithTafsir() {
           const normalizedEmbedding = normalizeVector(embeddings[j]);
           vectorRepository.addPoint(normalizedEmbedding, globalIndex);
 
-          metadata.push({
+          // Build metadata object with conditional fields
+          const metaEntry: any = {
             id: globalIndex,
             text: batch[j].text,
             source: batch[j].source,
-          });
+          };
+
+          // Add type-specific fields if they exist
+          if ("type" in batch[j]) {
+            metaEntry.type = (batch[j] as any).type;
+          }
+          if ("tafsirSource" in batch[j]) {
+            metaEntry.tafsirSource = (batch[j] as any).tafsirSource;
+          }
+
+          metadata.push(metaEntry);
         }
 
         const progress = Math.min(i + BATCH_SIZE, documents.length);
