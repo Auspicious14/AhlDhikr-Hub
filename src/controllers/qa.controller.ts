@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { QaService } from "../services/qa.service";
 import { VectorService } from "../services/vector.service";
+import { AuthRequest } from "../middleware/auth.middleware";
 
 export class QaController {
   private qaService: QaService;
@@ -105,6 +106,111 @@ export class QaController {
       console.error("Error fetching recent questions:", error);
       res.status(500).json({
         error: "An internal error occurred while fetching recent questions.",
+      });
+    }
+  }
+
+  async getUserRecentQuestions(req: AuthRequest, res: Response): Promise<void> {
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
+
+    if (!req.user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    try {
+      const questions = await this.qaService.getUserRecentQuestions(
+        req.user.userId,
+        limit
+      );
+      res.status(200).json(questions);
+    } catch (error) {
+      console.error("Error fetching user recent questions:", error);
+      res.status(500).json({
+        error:
+          "An internal error occurred while fetching user recent questions.",
+      });
+    }
+  }
+
+  async addToFavorites(req: AuthRequest, res: Response): Promise<void> {
+    const { slug } = req.params;
+
+    if (!req.user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    try {
+      await this.qaService.addToFavorites(req.user.userId, slug);
+      res.status(201).json({ message: "Added to favorites successfully" });
+    } catch (error) {
+      console.error("Error adding to favorites:", error);
+      res.status(500).json({
+        error: "An internal error occurred while adding to favorites.",
+      });
+    }
+  }
+
+  async removeFromFavorites(req: AuthRequest, res: Response): Promise<void> {
+    const { slug } = req.params;
+
+    if (!req.user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    try {
+      await this.qaService.removeFromFavorites(req.user.userId, slug);
+      res.status(200).json({ message: "Removed from favorites successfully" });
+    } catch (error) {
+      console.error("Error removing from favorites:", error);
+      res.status(500).json({
+        error: "An internal error occurred while removing from favorites.",
+      });
+    }
+  }
+
+  async getUserFavorites(req: AuthRequest, res: Response): Promise<void> {
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+    const page = req.query.page ? parseInt(req.query.page as string) : 1;
+    const skip = (page - 1) * limit;
+
+    if (!req.user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    try {
+      const favorites = await this.qaService.getUserFavorites(
+        req.user.userId,
+        limit,
+        skip
+      );
+      res.status(200).json(favorites);
+    } catch (error) {
+      console.error("Error fetching user favorites:", error);
+      res.status(500).json({
+        error: "An internal error occurred while fetching user favorites.",
+      });
+    }
+  }
+
+  async isFavorite(req: AuthRequest, res: Response): Promise<void> {
+    const { slug } = req.params;
+
+    if (!req.user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    try {
+      const isFavorite = await this.qaService.isFavorite(req.user.userId, slug);
+      res.status(200).json({ isFavorite });
+    } catch (error) {
+      console.error("Error checking if answer is favorite:", error);
+      res.status(500).json({
+        error: "An internal error occurred while checking favorite status.",
       });
     }
   }

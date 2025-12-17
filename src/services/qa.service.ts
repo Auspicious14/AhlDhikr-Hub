@@ -2,6 +2,7 @@ import { GeminiService } from "./gemini.service";
 import { VectorService } from "./vector.service";
 import { AnswerRepository } from "../repositories/answer.repository";
 import { CategoryService } from "./category.service";
+import { FavoriteRepository } from "../repositories/favorite.repository";
 import { IAnswer, ISource } from "../models/answer";
 import slugify from "slugify";
 import { Metadata } from "../models/types";
@@ -11,17 +12,20 @@ export class QaService {
   private vectorService: VectorService;
   private answerRepository: AnswerRepository;
   private categoryService: CategoryService;
+  private favoriteRepository: FavoriteRepository;
 
   constructor(
     geminiService: GeminiService,
     vectorService: VectorService,
     answerRepository: AnswerRepository,
-    categoryService: CategoryService
+    categoryService: CategoryService,
+    favoriteRepository: FavoriteRepository
   ) {
     this.geminiService = geminiService;
     this.vectorService = vectorService;
     this.answerRepository = answerRepository;
     this.categoryService = categoryService;
+    this.favoriteRepository = favoriteRepository;
   }
 
   private _create_slug(question: string): string {
@@ -238,5 +242,32 @@ export class QaService {
     limit: number = 5
   ): Promise<Pick<IAnswer, "question" | "slug">[]> {
     return this.answerRepository.findRecentAnswers(limit);
+  }
+
+  async getUserRecentQuestions(
+    userId: string,
+    limit: number = 5
+  ): Promise<Pick<IAnswer, "question" | "slug">[]> {
+    return this.answerRepository.findRecentAnswersByUser(userId, limit);
+  }
+
+  async addToFavorites(userId: string, answerSlug: string): Promise<void> {
+    await this.favoriteRepository.addFavorite(userId, answerSlug);
+  }
+
+  async removeFromFavorites(userId: string, answerSlug: string): Promise<void> {
+    await this.favoriteRepository.removeFavorite(userId, answerSlug);
+  }
+
+  async getUserFavorites(
+    userId: string,
+    limit: number = 10,
+    skip: number = 0
+  ): Promise<IAnswer[]> {
+    return this.answerRepository.findFavoriteAnswersByUser(userId, limit, skip);
+  }
+
+  async isFavorite(userId: string, answerSlug: string): Promise<boolean> {
+    return this.answerRepository.isFavorite(userId, answerSlug);
   }
 }
