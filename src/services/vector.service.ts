@@ -3,6 +3,7 @@ import { VectorRepository } from "../repositories/vector.repository";
 import { EmbeddingService } from "./embedding.service";
 import { Metadata } from "../models/types";
 import { connectToDatabase, closeDatabaseConnection } from "./mongo.service";
+import { OptimizedVectorService } from "./optimized-vector.service";
 
 let isIndexLoaded = false;
 let metadata: Metadata[] = [];
@@ -17,8 +18,9 @@ export class VectorService {
   private dataRepository: DataRepository;
   private vectorRepository: VectorRepository;
   private embeddingService: EmbeddingService;
+  private optimizedService: OptimizedVectorService;
   private readonly BATCH_SIZE = 100;
-  private readonly CHECKPOINT_INTERVAL = 500;
+  private readonly CHECKPOINT_INTERVAL = 1000;
 
   constructor(
     dataRepository: DataRepository,
@@ -28,6 +30,7 @@ export class VectorService {
     this.dataRepository = dataRepository;
     this.vectorRepository = vectorRepository;
     this.embeddingService = embeddingService;
+    this.optimizedService = new OptimizedVectorService(vectorRepository);
   }
 
   async buildIndex(): Promise<void> {
@@ -162,13 +165,14 @@ export class VectorService {
           console.log(
             `🔄 Resuming from checkpoint: ${currentCount}/${documents.length} documents already indexed.`
           );
-          metadata = existingIndex.metadata;
+          // Load metadata from chunks to avoid 16MB limit
+          metadata = await this.optimizedService.loadMetadataFromChunks();
           startIndex = currentCount;
         } else if (currentCount >= documents.length) {
           console.log(
             `✅ Index already complete (${currentCount} documents). Use --force to rebuild.`
           );
-          metadata = existingIndex.metadata;
+          metadata = await this.optimizedService.loadMetadataFromChunks();
           isIndexLoaded = true;
           return;
         } else {
@@ -267,7 +271,16 @@ export class VectorService {
 
           if (shouldCheckpoint) {
             console.log(`💾 Checkpointing at ${progress} documents...`);
-            await this.vectorRepository.saveIndex(metadata);
+
+            // Use optimized service to save metadata in chunks to avoid 16MB limit
+            console.log(`📊 Saving ${metadata.length} metadata entries...`);
+            await this.optimizedService.saveMetadataInChunks(metadata);
+
+            // Save only slim metadata to main index to keep it small
+            const slimMetadata =
+              this.optimizedService.createSlimMetadata(metadata);
+            await this.vectorRepository.saveIndex(slimMetadata);
+
             console.log(`✅ Checkpoint completed at ${progress} documents`);
           }
         } catch (batchError) {
@@ -276,7 +289,10 @@ export class VectorService {
             batchError
           );
           console.log("💾 Saving progress before exit...");
-          await this.vectorRepository.saveIndex(metadata);
+          await this.optimizedService.saveMetadataInChunks(metadata);
+          const slimMetadata =
+            this.optimizedService.createSlimMetadata(metadata);
+          await this.vectorRepository.saveIndex(slimMetadata);
           throw batchError;
         }
       }
@@ -318,7 +334,19 @@ export class VectorService {
 
     const loaded = await this.vectorRepository.loadIndex();
     if (loaded) {
-      metadata = loaded.metadata;
+      // Check if metadata is empty or slim (only has summary fields)
+      if (
+        !loaded.metadata ||
+        loaded.metadata.length === 0 ||
+        (loaded.metadata.length === 1 && (loaded.metadata[0] as any).totalCount)
+      ) {
+        // Load full metadata from chunks
+        console.log("Loading full metadata from chunks...");
+        metadata = await this.optimizedService.loadMetadataFromChunks();
+      } else {
+        metadata = loaded.metadata;
+      }
+
       isIndexLoaded = true;
       console.log(
         `Successfully loaded index with ${metadata.length} documents from MongoDB.`
@@ -331,7 +359,7 @@ export class VectorService {
         "The application will run, but search functionality will be disabled until a valid index is built."
       );
       console.warn(
-        'To fix this, run "npm run build-index" with the required environment variables set.'
+        'To fix this, run "npm run build-local-index" with the required environment variables set.'
       );
       metadata = [];
       this.vectorRepository.initIndex(0);

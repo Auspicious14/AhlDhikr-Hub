@@ -150,6 +150,48 @@ export class VectorRepository {
         return null;
       }
 
+      // EMERGENCY FIX: Handle broken GridFS references due to space quota issues
+      if (indexDocument && indexDocument.vectorFileId) {
+        try {
+          // Check if the referenced file exists
+          const fileExists = await bucket
+            .find({ _id: indexDocument.vectorFileId })
+            .hasNext();
+          if (!fileExists) {
+            console.warn(
+              `Referenced GridFS file ${indexDocument.vectorFileId} not found. Looking for alternative...`
+            );
+
+            // Find the most recent valid file with matching dimension
+            const filesCollection = db.collection(
+              `${GRIDFS_BUCKET_NAME}.files`
+            );
+            const validFiles = await filesCollection
+              .find({
+                filename: this.gridFilename,
+                "metadata.dimension": this.dimension,
+              })
+              .sort({ uploadDate: -1 })
+              .limit(1)
+              .toArray();
+
+            if (validFiles.length > 0) {
+              const replacementFile = validFiles[0];
+              console.log(`Using replacement file: ${replacementFile._id}`);
+              indexDocument.vectorFileId = replacementFile._id;
+            } else {
+              console.error(
+                `No valid replacement files found for dimension ${this.dimension}`
+              );
+              return null;
+            }
+          }
+        } catch (fileCheckError) {
+          console.error(`Error checking file existence: ${fileCheckError}`);
+          // Continue with original file ID - let it fail naturally if file doesn't exist
+        }
+      }
+
       // Check for GridFS file
       if (indexDocument.vectorFileId) {
         console.log(`Downloading index (${this.gridFilename}) from GridFS...`);
