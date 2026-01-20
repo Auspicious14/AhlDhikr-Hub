@@ -1,0 +1,56 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        BigInt   @id @default(autoincrement())
+  email     String   @unique
+  password  String?  @db.Text
+  name      String?  @db.Text
+  googleId  String?  @unique(map: "users_google_id_key") @map("google_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@map("users")
+}
+
+model Answer {
+  id            BigInt   @id @default(autoincrement())
+  question      String   @db.Text
+  slug          String   @unique
+  answer        String   @db.Text
+  answerSnippet String   @map("answer_snippet") @db.Text
+  source        String   @db.Text
+  category      String   @db.Text
+  sources       Json     @db.JsonB
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @default(now()) @map("updated_at")
+
+  @@map("answers")
+}
+
+model Category {
+  id        BigInt   @id @default(autoincrement())
+  name      String   @db.Text
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@map("categories")
+}
+
+model Favorite {
+  id         BigInt   @id @default(autoincrement())
+  userId     String   @map("user_id")
+  answerSlug String   @map("answer_slug")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, answerSlug], map: "favorites_user_id_answer_slug_key")
+  @@map("favorites")
+}
+

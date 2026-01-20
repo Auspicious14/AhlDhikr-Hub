@@ -6,7 +6,7 @@ import cors from "cors";
 
 dotenv.config();
 
-const requiredEnvVars = ["GEMINI_API_KEY", "HADITH_API_KEY", "MONGODB_URI", "JWT_SECRET"];
+const requiredEnvVars = ["GEMINI_API_KEY", "HADITH_API_KEY", "JWT_SECRET"];
 let missingVars = false;
 const port = process.env.PORT || 2002;
 const nodeEnv = process.env.NODE_ENV;
@@ -49,7 +49,7 @@ const initialize = async (): Promise<void> => {
         console.log("🚀 Initializing server...");
         const vectorService = getVectorService();
         
-        console.log("📥 Loading vector index from MongoDB...");
+        console.log("📥 Loading vector index from Postgres...");
         await vectorService.loadIndex();
         
         isReady = true;

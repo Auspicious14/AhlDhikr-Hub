@@ -5,6 +5,7 @@ import { GeminiService } from "./services/gemini.service";
 import { EmbeddingService } from "./services/embedding.service";
 import { DataRepository } from "./repositories/data.repository";
 import { VectorRepository } from "./repositories/vector.repository";
+import { FavoriteRepository } from "./repositories/favorite.repository";
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -34,6 +35,7 @@ const main = async () => {
 
   const answerRepository = new AnswerRepository();
   const categoryRepository = new CategoryRepository();
+  const favoriteRepository = new FavoriteRepository();
 
   const categoryService = new CategoryService(categoryRepository);
   const vectorService = new VectorService(
@@ -45,7 +47,8 @@ const main = async () => {
     geminiService,
     vectorService,
     answerRepository,
-    categoryService
+    categoryService,
+    favoriteRepository
   );
   // --- End of Dependency Injection ---
 

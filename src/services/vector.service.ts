@@ -1,9 +1,8 @@
 import { DataRepository } from "../repositories/data.repository";
 import { VectorRepository } from "../repositories/vector.repository";
+import { PostgresEmbeddingRepository } from "../repositories/postgres-embedding.repository";
 import { EmbeddingService } from "./embedding.service";
 import { Metadata } from "../models/types";
-import { connectToDatabase, closeDatabaseConnection } from "./mongo.service";
-import { OptimizedVectorService } from "./optimized-vector.service";
 
 let isIndexLoaded = false;
 let metadata: Metadata[] = [];
@@ -18,9 +17,7 @@ export class VectorService {
   private dataRepository: DataRepository;
   private vectorRepository: VectorRepository;
   private embeddingService: EmbeddingService;
-  private optimizedService: OptimizedVectorService;
   private readonly BATCH_SIZE = 100;
-  private readonly CHECKPOINT_INTERVAL = 1000;
 
   constructor(
     dataRepository: DataRepository,
@@ -30,16 +27,31 @@ export class VectorService {
     this.dataRepository = dataRepository;
     this.vectorRepository = vectorRepository;
     this.embeddingService = embeddingService;
-    this.optimizedService = new OptimizedVectorService(vectorRepository);
   }
 
   async buildIndex(): Promise<void> {
     console.log("Building vector index...");
 
     try {
-      await connectToDatabase();
-
       await this.embeddingService.initialize();
+
+      const useShardedPostgres =
+        process.env.ENABLE_SHARDED_POSTGRES === "true";
+
+      let postgresRepo: PostgresEmbeddingRepository | null = null;
+      let existingIds = new Set<number>();
+
+      if (useShardedPostgres) {
+        console.log("Initializing sharded Postgres repositories...");
+        postgresRepo = new PostgresEmbeddingRepository();
+        await postgresRepo.initializeSchema();
+        console.log("Sharded Postgres schema initialized.");
+        
+        // Load existing IDs to avoid re-embedding
+        console.log("Loading existing document IDs...");
+        existingIds = await postgresRepo.getExistingDocumentIds();
+        console.log(`Found ${existingIds.size} existing documents in shards 1 & 2.`);
+      }
 
       const quranVerses = await this.dataRepository.getQuranVerses();
       const hadiths = await this.dataRepository.getFullHadith();
@@ -156,44 +168,41 @@ export class VectorService {
       console.log(`   Processing: ${documents.length} documents`);
       console.log(`   Batch Size: ${this.BATCH_SIZE}`);
 
-      let startIndex = 0;
-      const existingIndex = await this.vectorRepository.loadIndex();
-
-      if (existingIndex) {
-        const currentCount = this.vectorRepository.getCurrentCount();
-        if (currentCount > 0 && currentCount < documents.length) {
-          console.log(
-            `🔄 Resuming from checkpoint: ${currentCount}/${documents.length} documents already indexed.`
-          );
-          // Load metadata from chunks to avoid 16MB limit
-          metadata = await this.optimizedService.loadMetadataFromChunks();
-          startIndex = currentCount;
-        } else if (currentCount >= documents.length) {
-          console.log(
-            `✅ Index already complete (${currentCount} documents). Use --force to rebuild.`
-          );
-          metadata = await this.optimizedService.loadMetadataFromChunks();
-          isIndexLoaded = true;
-          return;
-        } else {
-          console.log("Starting fresh index build...");
-          metadata = [];
-          this.vectorRepository.initIndex(documents.length);
-        }
-      } else {
-        metadata = [];
-        this.vectorRepository.initIndex(documents.length);
-      }
+      metadata = [];
+      this.vectorRepository.initIndex(documents.length);
 
       console.log(
-        `\n🚀 Generating embeddings for ${
-          documents.length - startIndex
-        } remaining documents...`
+        `\n🚀 Generating embeddings for ${documents.length} documents...`
       );
 
-      for (let i = startIndex; i < documents.length; i += this.BATCH_SIZE) {
+      for (let i = 0; i < documents.length; i += this.BATCH_SIZE) {
         const batch = documents.slice(i, i + this.BATCH_SIZE);
-        const batchTexts = batch.map((d) => d.text);
+        
+        // Filter out documents that are already embedded (if using sharded postgres)
+        // We only want to skip embedding if *all* documents in the batch are already in DB
+        // But since we process in strict order and IDs match indices, we can check by ID.
+        
+        let batchTexts: string[] = [];
+        let indicesToEmbed: number[] = [];
+
+        if (useShardedPostgres && postgresRepo) {
+          for (let k = 0; k < batch.length; k++) {
+             const globalIndex = i + k;
+             if (!existingIds.has(globalIndex)) {
+               batchTexts.push(batch[k].text);
+               indicesToEmbed.push(k);
+             }
+          }
+          
+          if (batchTexts.length === 0) {
+             console.log(`   ⏭️ Skipped batch starting at index ${i} (already embedded)`);
+             continue;
+          }
+        } else {
+          batchTexts = batch.map((d) => d.text);
+          indicesToEmbed = batch.map((_, k) => k);
+        }
+
 
         if (i > 0 && delayMs > 0) {
           await this.delay(delayMs);
@@ -202,21 +211,28 @@ export class VectorService {
         try {
           const embeddings = await this.embeddingService.embedBatch(batchTexts);
 
+          const postgresBatchRows: {
+            id: number;
+            embedding: number[];
+            metadata: Metadata;
+          }[] = [];
+
           for (let j = 0; j < embeddings.length; j++) {
-            const globalIndex = i + j;
+            // Re-map back to original batch index
+            const batchIndex = indicesToEmbed[j];
+            const globalIndex = i + batchIndex;
+            
             const normalizedEmbedding = normalizeVector(embeddings[j]);
             this.vectorRepository.addPoint(normalizedEmbedding, globalIndex);
 
-            // Build metadata object with conditional fields based on document type
             const metaEntry: any = {
               id: globalIndex,
-              text: batch[j].text,
-              source: batch[j].source,
-              type: batch[j].type,
+              text: batch[batchIndex].text,
+              source: batch[batchIndex].source,
+              type: batch[batchIndex].type,
             };
 
-            // Add type-specific fields conditionally using type guards
-            const doc = batch[j];
+            const doc = batch[batchIndex];
             if (doc.type === "quran") {
               metaEntry.surah = (doc as any).surah;
               metaEntry.verseNumber = (doc as any).verseNumber;
@@ -248,6 +264,18 @@ export class VectorService {
             } else {
               metadata[globalIndex] = metaEntry;
             }
+
+            if (postgresRepo) {
+              postgresBatchRows.push({
+                id: globalIndex,
+                embedding: normalizedEmbedding,
+                metadata: metaEntry,
+              });
+            }
+          }
+
+          if (postgresRepo && postgresBatchRows.length > 0) {
+            await postgresRepo.insertBatch(postgresBatchRows);
           }
 
           const progress = Math.min(i + this.BATCH_SIZE, documents.length);
@@ -257,42 +285,11 @@ export class VectorService {
             } documents (${Math.round((progress / documents.length) * 100)}%)`
           );
 
-          // Debug checkpointing logic
-          const shouldCheckpoint =
-            progress % this.CHECKPOINT_INTERVAL === 0 ||
-            progress === documents.length;
-          console.log(
-            `   Debug: progress=${progress}, CHECKPOINT_INTERVAL=${
-              this.CHECKPOINT_INTERVAL
-            }, shouldCheckpoint=${shouldCheckpoint}, modulo=${
-              progress % this.CHECKPOINT_INTERVAL
-            }`
-          );
-
-          if (shouldCheckpoint) {
-            console.log(`💾 Checkpointing at ${progress} documents...`);
-
-            // Use optimized service to save metadata in chunks to avoid 16MB limit
-            console.log(`📊 Saving ${metadata.length} metadata entries...`);
-            await this.optimizedService.saveMetadataInChunks(metadata);
-
-            // Save only slim metadata to main index to keep it small
-            const slimMetadata =
-              this.optimizedService.createSlimMetadata(metadata);
-            await this.vectorRepository.saveIndex(slimMetadata);
-
-            console.log(`✅ Checkpoint completed at ${progress} documents`);
-          }
         } catch (batchError) {
           console.error(
             `❌ Error processing batch starting at index ${i}:`,
             batchError
           );
-          console.log("💾 Saving progress before exit...");
-          await this.optimizedService.saveMetadataInChunks(metadata);
-          const slimMetadata =
-            this.optimizedService.createSlimMetadata(metadata);
-          await this.vectorRepository.saveIndex(slimMetadata);
           throw batchError;
         }
       }
@@ -303,11 +300,7 @@ export class VectorService {
       );
 
       if (error instanceof Error) {
-        if (error.message.includes("MONGODB_URI")) {
-          console.error(
-            "The database connection string seems to be missing or invalid. Please check your MONGODB_URI environment variable."
-          );
-        } else if (error.message.includes("HADITH_API_KEY")) {
+        if (error.message.includes("HADITH_API_KEY")) {
           console.error(
             "The Hadith API key is missing. Please check your HADITH_API_KEY environment variable."
           );
@@ -319,9 +312,8 @@ export class VectorService {
       }
     }
 
-    await this.vectorRepository.saveIndex(metadata);
     isIndexLoaded = true;
-    console.log(`Index built and saved with ${metadata.length} documents.`);
+    console.log(`Index built with ${metadata.length} documents.`);
   }
 
   async loadIndex(): Promise<void> {
@@ -330,41 +322,30 @@ export class VectorService {
       return;
     }
 
-    await connectToDatabase();
+    const repo = new PostgresEmbeddingRepository();
+    const rows = await repo.loadAllEmbeddings();
 
-    const loaded = await this.vectorRepository.loadIndex();
-    if (loaded) {
-      // Check if metadata is empty or slim (only has summary fields)
-      if (
-        !loaded.metadata ||
-        loaded.metadata.length === 0 ||
-        (loaded.metadata.length === 1 && (loaded.metadata[0] as any).totalCount)
-      ) {
-        // Load full metadata from chunks
-        console.log("Loading full metadata from chunks...");
-        metadata = await this.optimizedService.loadMetadataFromChunks();
-      } else {
-        metadata = loaded.metadata;
-      }
-
-      isIndexLoaded = true;
-      console.log(
-        `Successfully loaded index with ${metadata.length} documents from MongoDB.`
-      );
-    } else {
-      console.warn(
-        "WARNING: No index found in the database. Initializing an empty index."
-      );
-      console.warn(
-        "The application will run, but search functionality will be disabled until a valid index is built."
-      );
-      console.warn(
-        'To fix this, run "npm run build-local-index" with the required environment variables set.'
-      );
-      metadata = [];
+    metadata = [];
+    if (rows.length === 0) {
       this.vectorRepository.initIndex(0);
       isIndexLoaded = true;
+      console.log("No embeddings found in Postgres. Index is empty.");
+      return;
     }
+
+    const maxId = rows[rows.length - 1].id;
+    this.vectorRepository.initIndex(maxId + 1);
+
+    for (const row of rows) {
+      const normalized = normalizeVector(row.embedding);
+      this.vectorRepository.addPoint(normalized, row.id);
+      metadata[row.id] = row.metadata;
+    }
+
+    isIndexLoaded = true;
+    console.log(
+      `Successfully loaded index with ${metadata.length} documents from Postgres.`
+    );
   }
 
   async search(query: string, k: number = 5): Promise<Metadata[]> {
@@ -425,7 +406,7 @@ if (require.main === module) {
       .buildIndex()
       .then(() => {
         console.log("Index build process finished.");
-        return closeDatabaseConnection();
+        return;
       })
       .catch((error) => {
         console.error("Failed to build index:", error.message);

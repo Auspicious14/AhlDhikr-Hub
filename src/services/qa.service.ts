@@ -200,25 +200,7 @@ export class QaService {
         sources,
       };
 
-      try {
-        // Try to create new answer
-        await this.answerRepository.createAnswer(answerData);
-      } catch (dbError: any) {
-        // If duplicate key error, update existing answer instead
-        if (dbError.code === 11000) {
-          console.log(`Question already exists, updating: ${slug}`);
-          // Update existing answer with new data
-          const existingAnswer = await this.answerRepository.findAnswerBySlug(
-            slug
-          );
-          if (existingAnswer) {
-            Object.assign(existingAnswer, answerData);
-            await existingAnswer.save();
-          }
-        } else {
-          throw dbError; // Re-throw if it's a different error
-        }
-      }
+      await this.answerRepository.createAnswer(answerData);
 
       // Step 6: Send done event
       yield {
