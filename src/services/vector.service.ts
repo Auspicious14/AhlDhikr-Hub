@@ -31,6 +31,7 @@ export class VectorService {
 
   async buildIndex(): Promise<void> {
     console.log("Building vector index...");
+    // Initialize embedding service
 
     try {
       await this.embeddingService.initialize();
